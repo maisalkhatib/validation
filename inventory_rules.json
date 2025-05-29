@@ -1,0 +1,35 @@
+{
+    "coffee_beans": {
+        "shot_to_grams": {"1": 9, "2": 18, "3": 27},
+        "subtypes": {
+            "regular": {"max_capacity": 5000, "threshold": 500},
+            "decaf": {"max_capacity": 3000, "threshold": 300}
+        }
+    },
+    "cups": {
+        "subtypes": {
+            "H7": {"max_capacity": 300, "threshold": 50},
+            "H9": {"max_capacity": 300, "threshold": 50},
+            "H12": {"max_capacity": 250, "threshold": 40},
+            "C7": {"max_capacity": 300, "threshold": 50},
+            "C9": {"max_capacity": 300, "threshold": 50},
+            "C12": {"max_capacity": 200, "threshold": 30},
+            "C16": {"max_capacity": 150, "threshold": 25}
+        }
+    },
+    "milk": {
+        "subtypes": {
+            "whole": {"max_capacity": 15000, "threshold": 2000},
+            "skim": {"max_capacity": 10000, "threshold": 1500},
+            "oat": {"max_capacity": 8000, "threshold": 1000},
+            "soy": {"max_capacity": 8000, "threshold": 1000}
+        }
+    },
+    "syrup": {
+        "subtypes": {
+            "vanilla": {"max_capacity": 3000, "threshold": 300},
+            "caramel": {"max_capacity": 3000, "threshold": 300},
+            "hazelnut": {"max_capacity": 2000, "threshold": 200}
+        }
+    }
+}

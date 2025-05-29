@@ -20,6 +20,7 @@ class InventoryManager:
         # Load configuration and inventory data
         self.load_inventory_rules()
         self.load_inventory_data()
+        self.logger.info("InventoryManager initialized successfully")
         
     def load_inventory_rules(self):
         """Load static configuration from JSON file"""
@@ -29,6 +30,8 @@ class InventoryManager:
             
             with open(file_path, 'r') as file:
                 self.inventory_rules = json.load(file)
+            
+            self.logger.info(f"Loaded inventory rules from {file_path}")
                 
         except Exception as e:
             self.logger.error(f"Error loading inventory rules: {e}")
@@ -36,90 +39,131 @@ class InventoryManager:
     
     def load_inventory_data(self):
         """Load inventory data from database and merge with rules"""
-        for ingredient_type, rules in self.inventory_rules.items():
-            if "subtypes" not in rules:
-                continue
-                
-            for subtype, limits in rules["subtypes"].items():
-                # Get current amount from database
-                db_data = self.db_client.get_inventory(ingredient_type, subtype)
-                
-                # Combine DB data with rules
-                self.inventory_cache[ingredient_type][subtype] = {
-                    "current_amount": db_data.get("current_amount", 0) if db_data else 0,
-                    "threshold": limits["threshold"],
-                    "max_capacity": limits["max_capacity"]
-                }
-    
+        try:
+            for ingredient_type, rules in self.inventory_rules.items():
+
+                # Skip if no subtypes (like for special rules)
+                if "subtypes" not in rules:
+                    continue
+                    
+                # Load each subtype
+                for subtype, limits in rules["subtypes"].items():
+                    # Get current amount from database
+                    db_data = self.db_client.get_inventory(ingredient_type, subtype)
+                    
+                    # Combine DB data with rules
+                    self.inventory_cache[ingredient_type][subtype] = {
+                        "current_amount": db_data.get("current_amount", 0) if db_data else 0,
+                        "warning_threshold": limits["warning_threshold"],
+                        "critical_threshold": limits["critical_threshold"],
+                        "max_capacity": limits["max_capacity"]
+                    }
+            self.logger.info(f"Loaded inventory data for {len(self.inventory_cache)} ingredient types")
+        
+        except Exception as e:
+            self.logger.error(f"Error loading inventory data: {e}")
+            raise
+
     def get_current_count(self, ingredient_type: str, subtype: str) -> float:
         """Get current inventory count for an ingredient"""
-        if ingredient_type in self.inventory_cache and subtype in self.inventory_cache[ingredient_type]:
-            return self.inventory_cache[ingredient_type][subtype]["current_amount"]
+        try:
+            if ingredient_type in self.inventory_cache and subtype in self.inventory_cache[ingredient_type]:
+                return self.inventory_cache[ingredient_type][subtype]["current_amount"]
+            
+            # If not in cache, try to load from DB
+            db_data = self.db_client.get_inventory(ingredient_type, subtype)
+            return db_data.get("current_amount", 0) if db_data else 0
         
-        # If not in cache, try to load from DB
-        db_data = self.db_client.get_inventory(ingredient_type, subtype)
-        return db_data.get("current_amount", 0) if db_data else 0
-    
-    def validate_inventory(self, ingredient_type: str, subtype: str, amount: float) -> Tuple[bool, str]:
+        except Exception as e:
+            self.logger.error(f"Error getting inventory count for {ingredient_type}:{subtype}: {e}")
+            return 0
+        
+    def validate_inventory(self, ingredient_type: str, subtype: str, amount: float) -> bool:
         """
-        Validate if enough inventory is available and above threshold
+        Validate if enough inventory is above critical threshold
         Returns: (is_valid, message)
         """
         # Convert shots to grams for coffee beans
         if ingredient_type == "coffee_beans":
-            shot_to_grams = self.inventory_rules.get("coffee_beans", {}).get("shot_to_grams", {})
-            amount = shot_to_grams.get(str(int(amount)), amount * 9)
+            amount = self.convert_shots_to_grams(int(amount))
+            self.logger.debug(f"Converted {int(amount)} shots to {amount} grams")
         
         # Get current amount and threshold
         current_amount = self.get_current_count(ingredient_type, subtype)
-        threshold = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("threshold", 0)
+        critical_threshold = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("critical_threshold", 0)
         
-        # Check if we have enough
-        if current_amount < amount:
-            return False, f"Not enough {ingredient_type}:{subtype}. Need {amount}, have {current_amount}"
-        
+
+        # Discussion: this way or just current_amount < threshold?
         # Check if we'll go below threshold after using this amount
         remaining = current_amount - amount
-        if remaining < threshold:
-            return False, f"Cannot use {amount} {ingredient_type}:{subtype}. Would go below threshold"
-        
-        return True, "OK"
-    
-    def update_inventory(self, ingredient_type: str, subtype: str, amount: float) -> bool:
-        """Update (subtract) inventory after use"""
-        # Convert shots to grams for coffee beans
-        if ingredient_type == "coffee_beans":
-            shot_to_grams = self.inventory_rules.get("coffee_beans", {}).get("shot_to_grams", {})
-            amount = shot_to_grams.get(str(int(amount)), amount * 9)
-        
-        # Get current amount
-        current_amount = self.get_current_count(ingredient_type, subtype)
-        new_amount = current_amount - amount
-        
-        # Update database
-        success = self.db_client.update_amount(ingredient_type, subtype, new_amount)
-        
-        if success:
-            # Update cache
-            if ingredient_type in self.inventory_cache and subtype in self.inventory_cache[ingredient_type]:
-                self.inventory_cache[ingredient_type][subtype]["current_amount"] = new_amount
-        
-        return success
-    
-    def refill_inventory(self, ingredient_type: str, subtype: str) -> bool:
-        """Refill inventory to maximum capacity"""
-        # Get max capacity
-        max_capacity = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("max_capacity")
-        
-        if not max_capacity:
+        if remaining < critical_threshold:
             return False
         
-        # Update database
-        success = self.db_client.update_amount(ingredient_type, subtype, max_capacity)
+        return True
+    
+    def update_inventory(self, ingredient_type: str, subtype: str, amount: float) -> Tuple[bool, str]:
+        """
+        Update (subtract) inventory after use
+        Returns: Tuple of (success_status, warning_status)
+            - success_status: bool indicating if database update was successful
+            - warning_status: str indicating if warning is needed ("warning" or "no_warning")
+        """
+        try:
+            # Convert shots to grams for coffee beans
+            if ingredient_type == "coffee_beans":
+                amount = self.convert_shots_to_grams(int(amount))
+            
+            # Get current amount
+            current_amount = self.get_current_count(ingredient_type, subtype)
+            warning_threshold = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("warning_threshold", 0)
+
+            # Validate we have enough
+            if current_amount < amount:
+                self.logger.error(f"Cannot subtract {amount} from {ingredient_type}:{subtype}. Only have {current_amount}")
+                return False, "no_warning"
+
+            new_amount = current_amount - amount
+            
+            # Update database
+            success = self.db_client.update_amount(ingredient_type, subtype, new_amount)
+            
+            if success:
+                # Update cache
+                if ingredient_type in self.inventory_cache and subtype in self.inventory_cache[ingredient_type]:
+                    self.inventory_cache[ingredient_type][subtype]["current_amount"] = new_amount
+                
+                self.logger.info(f"Updated {ingredient_type}:{subtype} from {current_amount} to {new_amount}")
+
+                if new_amount < warning_threshold:
+                    return True, "warning"
+                
+            return success, "no_warning"
         
-        if success:
-            # Update cache
-            if ingredient_type in self.inventory_cache and subtype in self.inventory_cache[ingredient_type]:
-                self.inventory_cache[ingredient_type][subtype]["current_amount"] = max_capacity
+        except Exception as e:
+            self.logger.error(f"Error updating inventory: {e}")
+            return False, "no_warning"
         
-        return success
+    def refill_inventory(self, ingredient_type: str, subtype: str) -> bool:
+        """Refill inventory to maximum capacity"""
+        try:
+            # Get max capacity
+            max_capacity = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("max_capacity")
+            
+            if not max_capacity:
+                self.logger.error(f"No max capacity found for {ingredient_type}:{subtype}")
+                return False
+            
+            # Update database
+            success = self.db_client.update_amount(ingredient_type, subtype, max_capacity)
+            
+            if success:
+                # Update cache
+                if ingredient_type in self.inventory_cache and subtype in self.inventory_cache[ingredient_type]:
+                    self.inventory_cache[ingredient_type][subtype]["current_amount"] = max_capacity
+
+                self.logger.info(f"Refilled {ingredient_type}:{subtype} to max capacity: {max_capacity}")
+            return success
+        
+        except Exception as e:
+            self.logger.error(f"Error refilling inventory: {e}")
+            return False

@@ -2,34 +2,34 @@
     "coffee_beans": {
         "shot_to_grams": {"1": 9, "2": 18, "3": 27},
         "subtypes": {
-            "regular": {"max_capacity": 5000, "threshold": 500},
-            "decaf": {"max_capacity": 3000, "threshold": 300}
+            "regular": {"max_capacity": 5000, "warning_threshold": 500, "critical_threshold": 250},
+            "decaf": {"max_capacity": 3000, "warning_threshold": 300, "critical_threshold": 150}
         }
     },
     "cups": {
         "subtypes": {
-            "H7": {"max_capacity": 300, "threshold": 50},
-            "H9": {"max_capacity": 300, "threshold": 50},
-            "H12": {"max_capacity": 250, "threshold": 40},
-            "C7": {"max_capacity": 300, "threshold": 50},
-            "C9": {"max_capacity": 300, "threshold": 50},
-            "C12": {"max_capacity": 200, "threshold": 30},
-            "C16": {"max_capacity": 150, "threshold": 25}
+            "H7": {"max_capacity": 300, "warning_threshold": 50, "critical_threshold": 25},
+            "H9": {"max_capacity": 300, "warning_threshold": 50, "critical_threshold": 25},
+            "H12": {"max_capacity": 250, "warning_threshold": 40, "critical_threshold": 20},
+            "C7": {"max_capacity": 300, "warning_threshold": 50, "critical_threshold": 25},
+            "C9": {"max_capacity": 300, "warning_threshold": 50, "critical_threshold": 25},
+            "C12": {"max_capacity": 200, "warning_threshold": 30, "critical_threshold": 15},
+            "C16": {"max_capacity": 150, "warning_threshold": 25, "critical_threshold": 12}
         }
     },
     "milk": {
         "subtypes": {
-            "whole": {"max_capacity": 15000, "threshold": 2000},
-            "skim": {"max_capacity": 10000, "threshold": 1500},
-            "oat": {"max_capacity": 8000, "threshold": 1000},
-            "soy": {"max_capacity": 8000, "threshold": 1000}
+            "whole": {"max_capacity": 15000, "warning_threshold": 2000, "critical_threshold": 1000},
+            "skim": {"max_capacity": 10000, "warning_threshold": 1500, "critical_threshold": 750},
+            "oat": {"max_capacity": 8000, "warning_threshold": 1000, "critical_threshold": 500},
+            "soy": {"max_capacity": 8000, "warning_threshold": 1000, "critical_threshold": 500}
         }
     },
     "syrup": {
         "subtypes": {
-            "vanilla": {"max_capacity": 3000, "threshold": 300},
-            "caramel": {"max_capacity": 3000, "threshold": 300},
-            "hazelnut": {"max_capacity": 2000, "threshold": 200}
+            "vanilla": {"max_capacity": 3000, "warning_threshold": 300, "critical_threshold": 150},
+            "caramel": {"max_capacity": 3000, "warning_threshold": 300, "critical_threshold": 150},
+            "hazelnut": {"max_capacity": 2000, "warning_threshold": 200, "critical_threshold": 100}
         }
     }
 }

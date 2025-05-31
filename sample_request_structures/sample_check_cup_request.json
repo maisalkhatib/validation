@@ -1,0 +1,34 @@
+{
+    "client_type": "scheduler",
+    "request_type": "check_cup",
+    "payload": {
+        "items": [{
+            "drink_name": "cappuccino",
+            "size": "small", 
+            "cup_id": "H9",
+            "temperature": "hot",
+            "ingredients": {
+            "espresso": {
+                "type": "regular",
+                "amount": 1
+            },
+            "milk": {
+                "type": "whole",
+                "amount": 150
+            }
+        }
+    },
+    {
+        "drink_name": "americano",
+        "size": "small",
+        "cup_id": "H9", 
+        "temperature": "hot",
+        "ingredients": {
+            "espresso": {
+                "type": "regular",
+                "amount": 2
+            }
+        }
+    }]
+    }
+}

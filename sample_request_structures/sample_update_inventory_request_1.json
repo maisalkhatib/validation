@@ -1,0 +1,23 @@
+{
+    "client_type": "scheduler",
+    "request_type": "update_inventory",
+    "payload": {
+        "items": [{
+            "drink_name": "cappuccino",
+            "size": "small", 
+            "cup_id": "H9",
+            "temperature": "hot",
+            "ingredients": {
+            "espresso": {
+                "type": "regular",
+                "amount": 1
+            },
+            "milk": {
+                "type": "whole",
+                "amount": 150
+            }
+        }
+    }],
+        "ingredients": [{"cup_id": "H9", "amount": 1}] // why amount you may ask? This is so that from the dashboard barista can manually change the amount of ingredient to the cup
+    }
+}

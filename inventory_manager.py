@@ -125,7 +125,7 @@ class InventoryManager:
             new_amount = current_amount - amount
             
             # Update database
-            success = self.db_client.update_amount(ingredient_type, subtype, new_amount)
+            success = self.db_client.update_inventory(ingredient_type, subtype, new_amount)
             
             if success:
                 # Update cache
@@ -154,7 +154,7 @@ class InventoryManager:
                 return False
             
             # Update database
-            success = self.db_client.update_amount(ingredient_type, subtype, max_capacity)
+            success = self.db_client.update_inventory(ingredient_type, subtype, max_capacity)
             
             if success:
                 # Update cache

@@ -1,4 +1,5 @@
 {
+    "request_id": "594d9767-33b6-4e3e-a424-05ccf08f27d8",
     "client_type": "scheduler",
     "request_type": "update_inventory",
     "payload": {
@@ -18,6 +19,6 @@
             }
         }
     }],
-        "ingredients": [{"cup_id": "H9", "amount": 1}] // why amount you may ask? This is so that from the dashboard barista can manually change the amount of ingredient to the cup
+        "ingredients": [{"cup_id": "H9", "amount": 1}]
     }
 }

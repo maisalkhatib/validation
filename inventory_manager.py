@@ -117,15 +117,10 @@ class InventoryManager:
             current_amount = self.get_current_count(ingredient_type, subtype)
             warning_threshold = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("warning_threshold", 0)
 
-            # Validate we have enough
-            if current_amount < amount:
-                self.logger.error(f"Cannot subtract {amount} from {ingredient_type}:{subtype}. Only have {current_amount}")
-                return False, "no_warning"
-
             new_amount = current_amount - amount
             
             # Update database
-            success = self.db_client.update_amount(ingredient_type, subtype, new_amount)
+            success = self.db_client.update_inventory(ingredient_type, subtype, new_amount)
             
             if success:
                 # Update cache
@@ -154,7 +149,7 @@ class InventoryManager:
                 return False
             
             # Update database
-            success = self.db_client.update_amount(ingredient_type, subtype, max_capacity)
+            success = self.db_client.update_inventory(ingredient_type, subtype, max_capacity)
             
             if success:
                 # Update cache
@@ -167,3 +162,45 @@ class InventoryManager:
         except Exception as e:
             self.logger.error(f"Error refilling inventory: {e}")
             return False
+        
+
+
+
+"""
+validate_inventory(ingredient_type, subtype, amount) → bool: 
+    - Check if we have enough inventory
+    parameters:
+        ingredient_type: str -> "coffee_beans", "cups", "milk", "syrup"
+        subtype: str ->Coffee beans: "regular", "decaf"
+                        Cups: "H7", "H9", "H12", "C7", "C9", "C12", "C16"
+                        Milk: "whole", "skim", "oat", "soy"
+                        Syrup: "vanilla", "caramel", "hazelnut"
+        amount: float -> amount of ingredient to use
+                For coffee_beans: Number of shots (1, 2, or 3) - will be converted to grams automatically
+                For cups: Always 1 (one cup at a time)
+                For milk/syrup: Amount in milliliters (ml)
+    returns:
+        bool: True if we have enough inventory, False otherwise
+    
+    Example:
+        is_valid = inventory_manager.validate_inventory("coffee_beans", "regular", 1)
+        is_valid = inventory_manager.validate_inventory("cups", "H7", 1)
+        
+update_inventory(ingredient_type, subtype, amount) → Tuple[bool, str]:
+    - Update inventory after use
+    parameters: same as validate_inventory
+    returns:
+        Tuple[bool, str]:
+            - success_status: bool indicating if database update was successful
+            - warning_status: str indicating if warning to dashboard is needed ("warning" or "no_warning")
+    - example:
+        success, warning = inventory_manager.update_inventory("coffee_beans", "regular", 1)
+
+refill_inventory(ingredient_type, subtype) → bool:
+    - Refill inventory to maximum capacity
+    parameters: same as validate_inventory
+    returns:
+        bool: True if inventory was refilled successfully, False otherwise
+    - example:
+        success = inventory_manager.refill_inventory("coffee_beans", "regular")
+"""

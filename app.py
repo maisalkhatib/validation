@@ -1,16 +1,31 @@
 from pydantic_req_structure import UpdateInventoryRequest
+from fastapi import FastAPI, HTTPException
+import uvicorn
+
+from main_validation import MainValidation
+
 
 app = FastAPI(title="Inventory Manager", description="Inventory Manager API", docs_url="/")
 
+# the main validation object
+main_validation = MainValidation()
+
 @app.post("/update-inventory")
 def update_inventory(request: UpdateInventoryRequest):
+    # used by Dashboard to manually update the inventory
+    # used by OMS/Scheduler to update the inventory after a robotic step is complete
+
     # FastAPI already validated the input!
     first_item = request.payload.items[0]
+    print(first_item)
+
+    # if update inventory fails send a 400 error
+    if not main_validation.post_request(request):
+        raise HTTPException(status_code=400, detail="Validation failed")
+    
+    # if update inventory succeeds send a 200 response
     return {
-        "request_id": request.request_id,
-        "drink": first_item.drink_name,
-        "cup_id": first_item.cup_id,
-        "ingredients": list(first_item.ingredients.keys())
+        "message": "Inventory updated successfully"
     }
 
 if __name__ == "__main__":

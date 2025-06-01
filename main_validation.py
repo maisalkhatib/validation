@@ -11,10 +11,11 @@ class MainValidation:
 
 
         # the inventory manager
-        self._inventory = InventoryManager()
+        # self._inventory_client = InventoryManager()
         # the main queue where we will receive the requests
-        self._queue = []
+        self._request_queue = []
 
     def post_request(self, request):
         # check if it is a valid request using pydantic
+
         pass

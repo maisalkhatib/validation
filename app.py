@@ -28,5 +28,11 @@ def update_inventory(request: UpdateInventoryRequest):
         "message": "Inventory updated successfully"
     }
 
+# NOTE: get the current inventory
+# NOTE: update the inventory from dashboard and OMS always subtracts from the inventory(cups, syrups, milk from the dashboard OMS everything)
+# NOTE: refill from the dashboard + Have a worker to update the status on inventory level change
+# 
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="localhost", port=8069)

@@ -2,6 +2,14 @@ import json
 import os
 import logging
 from typing import Tuple
+from db_client import DatabaseClient
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,  # Set to DEBUG to see all log levels
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 class InventoryManager:
     def __init__(self, db_client):
@@ -26,7 +34,7 @@ class InventoryManager:
         """Load static configuration from JSON file"""
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            file_path = os.path.join(current_dir, 'config', 'inventory_rules.json')
+            file_path = os.path.join(current_dir, 'inventory_rules.json')
             
             with open(file_path, 'r') as file:
                 self.inventory_rules = json.load(file)
@@ -59,7 +67,8 @@ class InventoryManager:
                         "max_capacity": limits["max_capacity"]
                     }
             self.logger.info(f"Loaded inventory data for {len(self.inventory_cache)} ingredient types")
-        
+            self.logger.debug(f"Inventory cache: {self.inventory_cache}")
+
         except Exception as e:
             self.logger.error(f"Error loading inventory data: {e}")
             raise
@@ -77,6 +86,18 @@ class InventoryManager:
         except Exception as e:
             self.logger.error(f"Error getting inventory count for {ingredient_type}:{subtype}: {e}")
             return 0
+
+    def convert_shots_to_grams(self, shots: int) -> float:
+        """Convert coffee shots to grams"""
+        shot_conversions = self.inventory_rules.get("coffee_beans", {}).get("shot_to_grams", {})
+        
+        # Convert int keys from JSON (JSON stores as strings)
+        if isinstance(shot_conversions, dict):
+            shot_conversions = {int(k) if k.isdigit() else k: v for k, v in shot_conversions.items()}
+        
+        # Return conversion or default (9g per shot)
+        return shot_conversions.get(shots, shots * 9)
+    
         
     def validate_inventory(self, ingredient_type: str, subtype: str, amount: float) -> bool:
         """
@@ -85,8 +106,8 @@ class InventoryManager:
         """
         # Convert shots to grams for coffee beans
         if ingredient_type == "coffee_beans":
-            amount = self.convert_shots_to_grams(int(amount))
-            self.logger.debug(f"Converted {int(amount)} shots to {amount} grams")
+            converted_amount = self.convert_shots_to_grams(int(amount))
+            self.logger.debug(f"Converted {int(amount)} shots to {converted_amount} grams")
         
         # Get current amount and threshold
         current_amount = self.get_current_count(ingredient_type, subtype)
@@ -95,7 +116,7 @@ class InventoryManager:
 
         # Discussion: this way or just current_amount < threshold?
         # Check if we'll go below threshold after using this amount
-        remaining = current_amount - amount
+        remaining = current_amount - converted_amount
         if remaining < critical_threshold:
             return False
         
@@ -162,11 +183,18 @@ class InventoryManager:
         except Exception as e:
             self.logger.error(f"Error refilling inventory: {e}")
             return False
-        
-
-
+if __name__ == "__main__":
+    InventoryManager(db_client=DatabaseClient(
+        "dbname=barns_inventory user=postgres password=QSS2030QSS host=localhost port=5432"
+    ))
 
 """
+initialize the db client in the main validation: 
+db_client = DatabaseClient(
+        "dbname=barns_inventory user=postgres password=QSS2030QSS host=localhost port=5432"
+    )
+
+    
 validate_inventory(ingredient_type, subtype, amount) → bool: 
     - Check if we have enough inventory
     parameters:

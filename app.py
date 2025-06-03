@@ -10,8 +10,18 @@ app = FastAPI(title="Inventory Manager", description="Inventory Manager API", do
 # the main validation object
 main_validation = MainValidation()
 
-@app.post("/update-inventory")
-def update_inventory(request: UpdateInventoryRequest):
+@app.post("/pre_check")
+async def pre_check(request):
+    """
+    used to check if all the required ingredients are available for the drink
+    """
+    # used by Scheduler to check the cup before making a drink
+    result = {"passed": False, "details": {}}
+    return result
+
+
+@app.post("/update_inventory")
+async def update_inventory(request: UpdateInventoryRequest):
     # used by Dashboard to manually update the inventory
     # used by OMS/Scheduler to update the inventory after a robotic step is complete
 
@@ -28,10 +38,45 @@ def update_inventory(request: UpdateInventoryRequest):
         "message": "Inventory updated successfully"
     }
 
-# NOTE: get the current inventory
+@app.post("/check_cup_placed")
+async def check_cup_placed(request: ValidationRequest):
+    """Run a validation function by name with given parameters."""
+    # func_name = request.function
+    # if func_name not in VALIDATORS:
+    #     return {"error": f"No such validation function '{func_name}'", "passed": False}
+    
+    result = {"passed": True, "details": {}}
+    return result
+
+@app.post("/check_cup_picked")
+async def check_cup_picked(request: ValidationRequest):
+    """Run a validation function by name with given parameters."""
+    # func_name = request.function
+    # if func_name not in VALIDATORS:
+    #     return {"error": f"No such validation function '{func_name}'", "passed": False}
+
+    result = {"passed": True, "details": {}}
+    return result
+
+@app.post("/pre_check") 
+async def pre_check(request: ValidationRequest):
+    """Run a validation function by name with given parameters."""
+    # func_name = request.function
+    # if func_name not in VALIDATORS:
+    #     return {"error": f"No such validation function '{func_name}'", "passed": False}
+    
+    result = {"passed": True, "details": {}}
+    return result
+
+
+# NOTE: Check Cup: Inventory response structure {"passed": true/false, "details": {<all results>}}
+# NOTE: Update Inventory: {"passed": true/false, "details": {<all results>}} 
+# NOTE: get the current inventory{High, med, low} for all ingredients
+
+
 # NOTE: update the inventory from dashboard and OMS always subtracts from the inventory(cups, syrups, milk from the dashboard OMS everything)
 # NOTE: refill from the dashboard + Have a worker to update the status on inventory level change
-# 
+
 
 
 if __name__ == "__main__":

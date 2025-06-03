@@ -1,23 +1,35 @@
 from typing import Literal, Optional
 from pydantic import BaseModel, ValidationError, HTTPException
 import logging
-
+import threading
+from queue import Queue
 
 from inventory_manager import InventoryManager
+from db_client import DatabaseClient
 
 
 
 
 class MainValidation:
     def __init__(self):
+        self._db_client = self.load_db_client()
 
 
         # the inventory manager
         # self._inventory_client = InventoryManager()
         # the main queue where we will receive the requests
-        self._request_queue = []
+        
+        self._request_queue = Queue()
+        # the response queue
+        self._response_queue = Queue()
+
+        # the workers
+        self._request_worker = threading.Thread(target=self.request_worker, daemon=True)
+        self._response_worker = threading.Thread(target=self.response_worker, daemon=True)
+
         # initialize the logging
         logging.basicConfig(level=logging.INFO)
+
 
 
     def post_request(self, request):
@@ -29,10 +41,26 @@ class MainValidation:
             # log the request
             logging.info(f"received request: {request} with request_id: {request.request_id}")
             # if the request is valid, add it to the queue
-            self._request_queue.append(request)
+            self._request_queue.put(request)
         except Exception as e:
             print(e)
             print("failed to add request to queue")
             # log the error
             logging.error(f"failed to add request to queue: {e}")
-            return False
+            # return False
+    
+    def process_request(self):
+        # process the request
+        pass
+    
+    def send_response(self):
+        # send the response
+        pass
+
+    def request_worker(self):
+        # process the request
+        pass
+
+    def response_worker(self):
+        # send the response
+        pass

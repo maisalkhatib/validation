@@ -1,7 +1,7 @@
 {
     "request_id": "594d9767-33b6-4e3e-a424-05ccf08f27d8",
     "client_type": "scheduler",
-    "request_type": "update_inventory",
+    "function_name": "update_inventory",
     "payload": {
         "items": [{
             "drink_name": "cappuccino",

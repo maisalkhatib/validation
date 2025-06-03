@@ -1,4 +1,4 @@
-from pydantic_req_structure import UpdateInventoryRequest
+from pydantic_req_structure import UpdateInventoryRequest, PreCheckPayload
 from fastapi import FastAPI, HTTPException
 import uvicorn
 
@@ -59,7 +59,7 @@ async def check_cup_picked(request: ValidationRequest):
     return result
 
 @app.post("/pre_check") 
-async def pre_check(request: ValidationRequest):
+async def pre_check(request: PreCheckPayload):
     """Run a validation function by name with given parameters."""
     # func_name = request.function
     # if func_name not in VALIDATORS:

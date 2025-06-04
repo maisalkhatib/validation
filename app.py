@@ -1,4 +1,4 @@
-from pydantic_req_structure import UpdateInventoryRequest, PreCheckPayload
+from pydantic_req_structure import UpdateInventoryRequest, PreCheckRequest, CheckCupPlacedRequest, CheckCupPickedRequest, InventoryStatusRequest
 from fastapi import FastAPI, HTTPException
 import uvicorn
 
@@ -9,15 +9,6 @@ app = FastAPI(title="Inventory Manager", description="Inventory Manager API", do
 
 # the main validation object
 main_validation = MainValidation()
-
-@app.post("/pre_check")
-async def pre_check(request):
-    """
-    used to check if all the required ingredients are available for the drink
-    """
-    # used by Scheduler to check the cup before making a drink
-    result = {"passed": False, "details": {}}
-    return result
 
 
 @app.post("/update_inventory")
@@ -39,7 +30,7 @@ async def update_inventory(request: UpdateInventoryRequest):
     }
 
 @app.post("/check_cup_placed")
-async def check_cup_placed(request: ValidationRequest):
+async def check_cup_placed(request: CheckCupPlacedRequest):
     """Run a validation function by name with given parameters."""
     # func_name = request.function
     # if func_name not in VALIDATORS:
@@ -49,7 +40,7 @@ async def check_cup_placed(request: ValidationRequest):
     return result
 
 @app.post("/check_cup_picked")
-async def check_cup_picked(request: ValidationRequest):
+async def check_cup_picked(request: CheckCupPickedRequest):
     """Run a validation function by name with given parameters."""
     # func_name = request.function
     # if func_name not in VALIDATORS:
@@ -59,12 +50,22 @@ async def check_cup_picked(request: ValidationRequest):
     return result
 
 @app.post("/pre_check") 
-async def pre_check(request: PreCheckPayload):
+async def pre_check(request: PreCheckRequest):
     """Run a validation function by name with given parameters."""
     # func_name = request.function
     # if func_name not in VALIDATORS:
     #     return {"error": f"No such validation function '{func_name}'", "passed": False}
     
+    result = {"passed": True, "details": {}}
+    return result
+
+
+@app.post("/inventory_status")
+async def inventory_status(request: InventoryStatusRequest):
+    """Run a validation function by name with given parameters."""
+    # func_name = request.function
+    # if func_name not in VALIDATORS:
+    #     return {"error": f"No such validation function '{func_name}'", "passed": False}
     result = {"passed": True, "details": {}}
     return result
 

@@ -34,6 +34,15 @@ class Temperature(str, Enum):
     hot = "hot"
     cold = "cold"
 
+class RobotArm(str, Enum):
+    # NOTE: One or Two needs to be mapped to Left/Right or Cold/Hot
+    hot = "hot"
+    cold = "cold"
+
+class CupPosition(int, Enum):
+    # NOTE: 1 or 2 needs to be mapped to Left/Right or Cold/Hot
+    one = 1
+    two = 2
 
 # Ingredient detail
 class IngredientDetail(BaseModel):
@@ -49,6 +58,9 @@ class DrinkItem(BaseModel):
     temperature: Temperature
     ingredients: Dict[str, IngredientDetail]
 
+class CheckCupPickedPayload(BaseModel):
+    item: DrinkItem
+    robot_arm: RobotArm
 
 # Payload wrapper
 class PreCheckPayload(BaseModel):
@@ -58,6 +70,10 @@ class UpdateInventoryPayload(BaseModel):
     items: List[DrinkItem]
     ingredients: List[IngredientDetail]
 
+class CheckCupPlacePayload(BaseModel):
+    items: List[DrinkItem]
+    # robot_arm: RobotArm
+    cup_position: CupPosition
 
 # Full request model
 class PreCheckRequest(BaseModel):
@@ -71,3 +87,20 @@ class UpdateInventoryRequest(BaseModel):
     client_type: ClientType
     request_type: RequestType
     payload: UpdateInventoryPayload
+
+class CheckCupPlacedRequest(BaseModel):
+    request_id: str
+    client_type: ClientType
+    request_type: RequestType
+    payload: CheckCupPlacePayload
+
+class CheckCupPickedRequest(BaseModel):
+    request_id: str
+    client_type: ClientType
+    request_type: RequestType
+    payload: CheckCupPickedPayload
+
+class InventoryStatusRequest(BaseModel):
+    request_id: str
+    client_type: ClientType
+    request_type: RequestType

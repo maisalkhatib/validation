@@ -5,18 +5,19 @@ import threading
 from queue import Queue
 
 from inventory_manager import InventoryManager
+from pydantic_req_structure import InventoryStatusRequest
 from db_client import DatabaseClient
-
-
 
 
 class MainValidation:
     def __init__(self):
-        self._db_client = self.load_db_client()
+        self._db_client = DatabaseClient(
+        "dbname=barns_inventory user=postgres password=QSS2030QSS host=localhost port=5432"
+    )
 
 
         # the inventory manager
-        # self._inventory_client = InventoryManager()
+        self._inventory_client = InventoryManager(self._db_client)
         # the main queue where we will receive the requests
         
         self._request_queue = Queue()
@@ -48,7 +49,11 @@ class MainValidation:
             # log the error
             logging.error(f"failed to add request to queue: {e}")
             # return False
-    
+    def process_inventory_status_request(self, request: InventoryStatusRequest):
+        pass
+
+
+
     def process_request(self):
         # process the request
         pass

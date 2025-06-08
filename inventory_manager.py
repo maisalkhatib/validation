@@ -112,7 +112,11 @@ class InventoryManager:
         # Get current amount and threshold
         current_amount = self.get_current_count(ingredient_type, subtype)
         critical_threshold = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("critical_threshold", 0)
-        
+        warning_threshold = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("warning_threshold", 0)
+
+        # NOTE: @MAIS there are some issues with this function hence not changing it for now
+        ## the issue is that is that converted amount is only initialized when it's coffee beans
+        ## so if the request is for milk or syrup, it will not have converted_amount
 
         # Discussion: this way or just current_amount < threshold?
         # Check if we'll go below threshold after using this amount

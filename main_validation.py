@@ -53,96 +53,63 @@ class MainValidation:
 
     def process_update_inventory_request(self, payload):
         """
-
-
-        ## RECIEVED PAYLOAD EXAMPLE 1:
-        {
-    "request_id": "594d9767-33b6-4e3e-a424-05ccf08f27d8",
-    "client_type": "scheduler",
-    "function_name": "update_inventory",
-    "payload": {
-        "items": [{
-            "drink_name": "cappuccino",
-            "size": "small", 
-            "cup_id": "H9",
-            "temperature": "hot",
-            "ingredients": {
-            "espresso": {
-                "type": "regular",
-                "amount": 1
-            },
-            "milk": {
-                "type": "whole",
-                "amount": 150
-            }
-        }
-    }],
-        "ingredients": [{"cup": {
-                    "type": "H9",
-                    "amount": 1
-                }}]
-    }
-}
-
-        ## RECIEVED PAYLOAD EXAMPLE 2:
-        {
-    "request_id": "7b3e9f2a-4d8c-4e1f-9a2b-3c4d5e6f7g8h",
-    "client_type": "scheduler",
-    "function_name": "update_inventory",
-    "payload": {
-        "items": [{
-            "drink_name": "cappuccino",
-            "size": "small", 
-            "cup_id": "H9",
-            "temperature": "hot",
-            "ingredients": {
-                "espresso": {
-                    "type": "regular",
-                    "amount": 1
-                },
-                "milk": {
-                    "type": "whole",
-                    "amount": 150
-                }
-            }
-        },
-        {
-            "drink_name": "cappuccino",
-            "size": "small", 
-            "cup_id": "H9",
-            "temperature": "hot",
-            "ingredients": {
-                "espresso": {
-                    "type": "regular",
-                    "amount": 1
-                },
-                "milk": {
-                    "type": "whole",
-                    "amount": 150
-                }
-            }
-        }],
-        "ingredients": [
-            {
-                "milk": {
-                    "type": "whole",
-                    "amount": 150
-                }
-            },
-            {
-                "milk": {
-                    "type": "whole",
-                    "amount": 150
-                }
-            }
-        ]
-    }
-}
+        Process update inventory request by updating each ingredient in the inventory. 
+        Used by Scheduler/OMS to subtract inventory after use
+        Used by Dashboard to add or subtract inventory after use
         """
-
-
-
-        pass
+        try:
+            # Initialize result tracking
+            result = {"passed": True, "details": {}}
+            
+            # Process each item's ingredients
+            for item in payload["payload"]["items"]:
+                for ingredient, details in item["ingredients"].items():
+                    # Convert espresso to coffee_beans
+                    ingredient_type = "coffee_beans" if ingredient == "espresso" else ingredient
+                    subtype = details["type"]
+                    amount = details["amount"]
+                    
+                    # Convert shots to grams for coffee_beans
+                    if ingredient_type == "coffee_beans":
+                        amount = self._inventory_client.convert_shots_to_grams(amount)
+                    
+                    # Update inventory
+                    success, warning = self._inventory_client.update_inventory(
+                        ingredient_type=ingredient_type,
+                        subtype=subtype,
+                        amount=amount  # Negative amount to subtract from inventory
+                    )
+                    
+                    if not success:
+                        result["passed"] = False
+                        result["details"][f"{ingredient_type}:{subtype}"] = {
+                            "status": "failed",
+                            "message": "Failed to update inventory"
+                        }
+                    elif warning in ["warning", "critical"]:
+                        result["details"][f"{ingredient_type}:{subtype}"] = {
+                            "status": warning,
+                            "message": f"Inventory {warning} level reached"
+                        }
+            
+            # Add request metadata to result
+            result["request_id"] = payload["request_id"]
+            result["client_type"] = payload["client_type"]
+            
+            # Put result in response queue
+            self._response_queue.put(result)
+            return result
+            
+        except Exception as e:
+            logging.error(f"Error processing update inventory request: {e}")
+            error_result = {
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "passed": False,
+                "details": {"error": str(e)}
+            }
+            self._response_queue.put(error_result)
+            return error_result
 
 
 

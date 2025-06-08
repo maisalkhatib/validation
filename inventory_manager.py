@@ -128,10 +128,11 @@ class InventoryManager:
     
     def update_inventory(self, ingredient_type: str, subtype: str, amount: float) -> Tuple[bool, str]:
         """
-        Update (subtract) inventory after use
+        Update (subtract/add) inventory after use
         Returns: Tuple of (success_status, warning_status)
             - success_status: bool indicating if database update was successful
             - warning_status: str indicating if warning is needed ("warning" or "no_warning")
+            NOTE: THIS function is never invoked if the amount can't be taken from the inventory
         """
         try:
             # Convert shots to grams for coffee beans
@@ -141,8 +142,9 @@ class InventoryManager:
             # Get current amount
             current_amount = self.get_current_count(ingredient_type, subtype)
             warning_threshold = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("warning_threshold", 0)
+            critical_threshold = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("critical_threshold", 0)
 
-            new_amount = current_amount - amount
+            new_amount = current_amount + amount
             
             # Update database
             success = self.db_client.update_inventory(ingredient_type, subtype, new_amount)
@@ -156,6 +158,8 @@ class InventoryManager:
 
                 if new_amount < warning_threshold:
                     return True, "warning"
+                elif new_amount < critical_threshold:
+                    return True, "critical"
                 
             return success, "no_warning"
         

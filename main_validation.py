@@ -148,6 +148,7 @@ class MainValidation:
 
 
     def process_inventory_status_request(self, payload):
+        # @Uzair verify this works properly
         """ !!!!!!! NOTE: @Uzair refactor this function to be more efficient and readable
         Used to get the inventory status for the entire inventory OR a specific item in the inventory
 

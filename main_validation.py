@@ -50,47 +50,107 @@ class MainValidation:
             # log the error
             logging.error(f"failed to add request to queue: {e}")
             # return False
-    def process_inventory_status_request(self, payload):
+
+    def process_update_inventory_request(self, payload):
         """
-        Used to get the inventory status for the entire inventory OR a specific item in the inventory
 
 
-        payload looks like this:
-                {
-            "request_id": "275ceafa-59e7-4639-b35f-61234f2ec634",
-            "client_type": "scheduler",
-            "function_name": "pre_check",
-            "payload": {
-                "items": [{
-                    "drink_name": "cappuccino",
-                    "size": "small",
-                    "cup_id": "H9",
-                    "temperature": "hot",
-                    "ingredients": {
-                    "espresso": {
-                        "type": "regular",
-                        "amount": 1
-                    },
-                    "milk": {
-                        "type": "whole",
-                        "amount": 150
-                    }
+        ## RECIEVED PAYLOAD EXAMPLE 1:
+        {
+    "request_id": "594d9767-33b6-4e3e-a424-05ccf08f27d8",
+    "client_type": "scheduler",
+    "function_name": "update_inventory",
+    "payload": {
+        "items": [{
+            "drink_name": "cappuccino",
+            "size": "small", 
+            "cup_id": "H9",
+            "temperature": "hot",
+            "ingredients": {
+            "espresso": {
+                "type": "regular",
+                "amount": 1
+            },
+            "milk": {
+                "type": "whole",
+                "amount": 150
+            }
+        }
+    }],
+        "ingredients": [{"cup": {
+                    "type": "H9",
+                    "amount": 1
+                }}]
+    }
+}
+
+        ## RECIEVED PAYLOAD EXAMPLE 2:
+        {
+    "request_id": "7b3e9f2a-4d8c-4e1f-9a2b-3c4d5e6f7g8h",
+    "client_type": "scheduler",
+    "function_name": "update_inventory",
+    "payload": {
+        "items": [{
+            "drink_name": "cappuccino",
+            "size": "small", 
+            "cup_id": "H9",
+            "temperature": "hot",
+            "ingredients": {
+                "espresso": {
+                    "type": "regular",
+                    "amount": 1
+                },
+                "milk": {
+                    "type": "whole",
+                    "amount": 150
+                }
+            }
+        },
+        {
+            "drink_name": "cappuccino",
+            "size": "small", 
+            "cup_id": "H9",
+            "temperature": "hot",
+            "ingredients": {
+                "espresso": {
+                    "type": "regular",
+                    "amount": 1
+                },
+                "milk": {
+                    "type": "whole",
+                    "amount": 150
+                }
+            }
+        }],
+        "ingredients": [
+            {
+                "milk": {
+                    "type": "whole",
+                    "amount": 150
                 }
             },
             {
-                "drink_name": "americano",
-                "size": "small",
-                "cup_id": "H9", 
-                "temperature": "hot",
-                "ingredients": {
-                    "espresso": {
-                        "type": "regular",
-                        "amount": 2
-                    }
+                "milk": {
+                    "type": "whole",
+                    "amount": 150
                 }
-            }]
             }
-        }
+        ]
+    }
+}
+        """
+
+
+
+        pass
+
+
+
+
+    def process_inventory_status_request(self, payload):
+        """ !!!!!!! NOTE: @Uzair refactor this function to be more efficient and readable
+        Used to get the inventory status for the entire inventory OR a specific item in the inventory
+
         """
         if payload["client_type"] == "dashboard	":
             inventory_status = {}
@@ -148,6 +208,9 @@ class MainValidation:
                     if ingredient_type in self._inventory_client.inventory_cache:
                         subtype = details["type"]
                         amount = details["amount"]
+                        if ingredient_type == "coffee_beans":
+                            # get the amount against the shot using the self._inventory_client.convert_shots_to_grams(amount)
+                            amount = self._inventory_client.convert_shots_to_grams(item["ingredients"]["espresso"]["amount"])
                         
                         if subtype in self._inventory_client.inventory_cache[ingredient_type]:
                             current_amount = self._inventory_client.inventory_cache[ingredient_type][subtype]["current_amount"]

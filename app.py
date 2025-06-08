@@ -16,18 +16,9 @@ async def update_inventory(request: UpdateInventoryRequest):
     # used by Dashboard to manually update the inventory
     # used by OMS/Scheduler to update the inventory after a robotic step is complete
 
-    # FastAPI already validated the input!
-    first_item = request.payload.items[0]
-    print(first_item)
+   pass
 
-    # if update inventory fails send a 400 error
-    if not main_validation.post_request(request):
-        raise HTTPException(status_code=400, detail="Validation failed")
-    
-    # if update inventory succeeds send a 200 response
-    return {
-        "message": "Inventory updated successfully"
-    }
+
 
 @app.post("/check_cup_placed")
 async def check_cup_placed(request: CheckCupPlacedRequest):
@@ -55,7 +46,8 @@ async def pre_check(request: PreCheckRequest):
     # func_name = request.function
     # if func_name not in VALIDATORS:
     #     return {"error": f"No such validation function '{func_name}'", "passed": False}
-    
+
+    # NOTE: Completed in process_inventory_status_request(payload) diff result for diff client_type
     result = {"passed": True, "details": {}}
     return result
 
@@ -66,6 +58,8 @@ async def inventory_status(request: InventoryStatusRequest):
     # func_name = request.function
     # if func_name not in VALIDATORS:
     #     return {"error": f"No such validation function '{func_name}'", "passed": False}
+
+    # NOTE: Completed in process_inventory_status_request(payload) diff result for diff client_type
     result = {"passed": True, "details": {}}
     return result
 

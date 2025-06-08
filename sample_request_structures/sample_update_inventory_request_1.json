@@ -19,6 +19,9 @@
             }
         }
     }],
-        "ingredients": [{"cup_id": "H9", "amount": 1}]
+        "ingredients": [{"cup": {
+                    "type": "H9",
+                    "amount": 1
+                }}]
     }
 }

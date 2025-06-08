@@ -118,92 +118,105 @@ class MainValidation:
         # @Uzair verify this works properly
         """ !!!!!!! NOTE: @Uzair refactor this function to be more efficient and readable
         Used to get the inventory status for the entire inventory OR a specific item in the inventory
-
         """
-        if payload["client_type"] == "dashboard	":
-            inventory_status = {}
-            
-            for ingredient_type, subtypes in self._inventory_client.inventory_cache.items():
-                inventory_status[ingredient_type] = {}
-
-                for subtype, data in subtypes.items():
-                    current_amount = data["current_amount"]
-                    warning_threshold = data["warning_threshold"]
-                    critical_threshold = data["critical_threshold"]
-
-                    status = "full"
-                    final_res = True
-                    if current_amount < critical_threshold:
-                        status = "empty"
-                        final_res = False
-                    elif current_amount < warning_threshold:
-                        status = "low"
-
-                    inventory_status[ingredient_type][subtype] = {
-                        "status": status,
-                        "current_amount": current_amount,
-                        "warning_threshold": warning_threshold,
-                        "critical_threshold": critical_threshold,
-                        "final_res": final_res
-                    }
-        elif payload["client_type"] == "scheduler":
-            result = {"passed": True, "details": {}}
-            
-            for item in payload["payload"]["items"]:
-                item_details = {}
+        try:
+            if payload["client_type"] == "dashboard":
+                inventory_status = {}
                 
-                # Check cup inventory
-                cup_id = item["cup_id"]
-                if cup_id in self._inventory_client.inventory_cache["cups"]:
-                    current_amount = self._inventory_client.inventory_cache["cups"][cup_id]["current_amount"]
-                    critical_threshold = self._inventory_client.inventory_cache["cups"][cup_id]["critical_threshold"]
-                    if current_amount - 1 < critical_threshold:
-                        result["passed"] = False
-                    item_details["cup"] = {
-                        "current": current_amount,
-                        "needed": 1,
-                        "critical_threshold": critical_threshold,
-                        "status": False if current_amount - 1 < critical_threshold else True
-                    }
+                for ingredient_type, subtypes in self._inventory_client.inventory_cache.items():
+                    inventory_status[ingredient_type] = {}
+
+                    for subtype, data in subtypes.items():
+                        current_amount = data["current_amount"]
+                        warning_threshold = data["warning_threshold"]
+                        critical_threshold = data["critical_threshold"]
+
+                        status = "full"
+                        final_res = True
+                        if current_amount < critical_threshold:
+                            status = "empty"
+                            final_res = False
+                        elif current_amount < warning_threshold:
+                            status = "low"
+
+                        inventory_status[ingredient_type][subtype] = {
+                            "status": status,
+                            "current_amount": current_amount,
+                            "warning_threshold": warning_threshold,
+                            "critical_threshold": critical_threshold,
+                            "final_res": final_res
+                        }
+            elif payload["client_type"] == "scheduler":
+                result = {"passed": True, "details": {}}
                 
-                # Check other ingredients
-                for ingredient, details in item["ingredients"].items():
-                    if ingredient == "espresso":
-                        ingredient_type = "coffee_beans"
-                    else:
-                        ingredient_type = ingredient
-                        
-                    if ingredient_type in self._inventory_client.inventory_cache:
-                        subtype = details["type"]
-                        amount = details["amount"]
-                        if ingredient_type == "coffee_beans":
-                            # get the amount against the shot using the self._inventory_client.convert_shots_to_grams(amount)
-                            amount = self._inventory_client.convert_shots_to_grams(item["ingredients"]["espresso"]["amount"])
-                        
-                        if subtype in self._inventory_client.inventory_cache[ingredient_type]:
-                            current_amount = self._inventory_client.inventory_cache[ingredient_type][subtype]["current_amount"]
-                            critical_threshold = self._inventory_client.inventory_cache[ingredient_type][subtype]["critical_threshold"]
+                for item in payload["payload"]["items"]:
+                    item_details = {}
+                    
+                    # Check cup inventory
+                    cup_id = item["cup_id"]
+                    if cup_id in self._inventory_client.inventory_cache["cups"]:
+                        current_amount = self._inventory_client.inventory_cache["cups"][cup_id]["current_amount"]
+                        critical_threshold = self._inventory_client.inventory_cache["cups"][cup_id]["critical_threshold"]
+                        if current_amount - 1 < critical_threshold:
+                            result["passed"] = False
+                        item_details["cup"] = {
+                            "current": current_amount,
+                            "needed": 1,
+                            "critical_threshold": critical_threshold,
+                            "status": False if current_amount - 1 < critical_threshold else True
+                        }
+                    
+                    # Check other ingredients
+                    for ingredient, details in item["ingredients"].items():
+                        if ingredient == "espresso":
+                            ingredient_type = "coffee_beans"
+                        else:
+                            ingredient_type = ingredient
                             
-                            if current_amount - amount < critical_threshold:
-                                result["passed"] = False
+                        if ingredient_type in self._inventory_client.inventory_cache:
+                            subtype = details["type"]
+                            amount = details["amount"]
+                            if ingredient_type == "coffee_beans":
+                                # get the amount against the shot using the self._inventory_client.convert_shots_to_grams(amount)
+                                amount = self._inventory_client.convert_shots_to_grams(item["ingredients"]["espresso"]["amount"])
+                            
+                            if subtype in self._inventory_client.inventory_cache[ingredient_type]:
+                                current_amount = self._inventory_client.inventory_cache[ingredient_type][subtype]["current_amount"]
+                                critical_threshold = self._inventory_client.inventory_cache[ingredient_type][subtype]["critical_threshold"]
                                 
-                            item_details[ingredient] = {
-                                "current": current_amount,
-                                "needed": amount,
-                                "critical_threshold": critical_threshold,
-                                "status": False if current_amount - amount < critical_threshold else True
-                            }
+                                if current_amount - amount < critical_threshold:
+                                    result["passed"] = False
+                                    
+                                item_details[ingredient] = {
+                                    "current": current_amount,
+                                    "needed": amount,
+                                    "critical_threshold": critical_threshold,
+                                    "status": False if current_amount - amount < critical_threshold else True
+                                }
+                    
+                    result["details"][item["drink_name"]] = item_details
                 
-                result["details"][item["drink_name"]] = item_details
-            
-            return result
-        else:
-            # invalid client type
-            inventory_status = {"final_res": False, "details": "Invalid client type"}
-        final_result = { "request_id": payload["request_id"],
-            "client_type": payload["client_type"], "result": inventory_status} 
-        self._response_queue.put(final_result)
-        return final_result
+                return result
+            else:
+                # invalid client type
+                inventory_status = {"final_res": False, "details": "Invalid client type"}
+            final_result = { "request_id": payload["request_id"],
+                "client_type": payload["client_type"], "result": inventory_status} 
+            self._response_queue.put(final_result)
+            return final_result
+
+        except Exception as e:
+            logging.error(f"Error processing inventory status request: {e}")
+            error_result = {
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "result": {
+                    "final_res": False,
+                    "details": f"Error processing request: {str(e)}"
+                }
+            }
+            self._response_queue.put(error_result)
+            return error_result
 
 
 

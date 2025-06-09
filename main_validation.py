@@ -108,7 +108,6 @@ class MainValidation:
             result["request_id"] = payload["request_id"]
             result["client_type"] = payload["client_type"]
             
-            print(result)
             # Put result in response queue
             self._response_queue.put(result)
             return result
@@ -157,7 +156,7 @@ class MainValidation:
                             "current_amount": current_amount,
                             "warning_threshold": warning_threshold,
                             "critical_threshold": critical_threshold,
-                            "final_res": final_res
+                            "final_res": final_res #final_res is False if the inventory is empty when the amount is less than the critical threshold
                         }
             elif payload["client_type"] == "scheduler":
                 result = {"passed": True, "details": {}}
@@ -208,13 +207,12 @@ class MainValidation:
                                 }
                     
                     result["details"][item["drink_name"]] = item_details
-                
                 return result
             else:
                 # invalid client type
                 inventory_status = {"final_res": False, "details": "Invalid client type"}
             final_result = { "request_id": payload["request_id"],
-                "client_type": payload["client_type"], "result": inventory_status} 
+                "client_type": payload["client_type"], "result": inventory_status}
             self._response_queue.put(final_result)
             return final_result
 

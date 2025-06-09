@@ -191,10 +191,10 @@ class InventoryManager:
         except Exception as e:
             self.logger.error(f"Error refilling inventory: {e}")
             return False
-if __name__ == "__main__":
-    InventoryManager(db_client=DatabaseClient(
-        "dbname=barns_inventory user=postgres password=QSS2030QSS host=localhost port=5432"
-    ))
+# if __name__ == "__main__":
+#     InventoryManager(db_client=DatabaseClient(
+#         "dbname=barns_inventory user=postgres password=QSS2030QSS host=localhost port=5432"
+#     ))
 
 """
 initialize the db client in the main validation: 

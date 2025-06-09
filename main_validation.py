@@ -62,17 +62,23 @@ class MainValidation:
             result = {"passed": True, "details": {}}
             
             # Process each item's ingredients
-            for item in payload["payload"]["items"]:
-                for ingredient, details in item["ingredients"].items():
+            for item in payload["payload"]["ingredients"]:
+                for ingredient, details in item.items():
                     # Convert espresso to coffee_beans
                     ingredient_type = "coffee_beans" if ingredient == "espresso" else ingredient
+                    if ingredient == "cup":
+                        ingredient_type = "cups"
+
                     subtype = details["type"]
                     amount = details["amount"]
                     
                     # Convert shots to grams for coffee_beans
                     if ingredient_type == "coffee_beans":
                         amount = self._inventory_client.convert_shots_to_grams(amount)
-                    
+                    # if the client type is scheduler, then we need to subtract the amount from the inventory
+                    if payload["client_type"] == "scheduler":
+                        amount = -amount
+
                     # Update inventory
                     success, warning = self._inventory_client.update_inventory(
                         ingredient_type=ingredient_type,
@@ -83,19 +89,26 @@ class MainValidation:
                     if not success:
                         result["passed"] = False
                         result["details"][f"{ingredient_type}:{subtype}"] = {
+                            "updated_amount": 0,
                             "status": "failed",
                             "message": "Failed to update inventory"
                         }
                     elif warning in ["warning", "critical"]:
-                        result["details"][f"{ingredient_type}:{subtype}"] = {
-                            "status": warning,
-                            "message": f"Inventory {warning} level reached"
-                        }
+                        # if key already exists, then append the amount
+                        if f"{ingredient_type}:{subtype}" in result["details"]:
+                            result["details"][f"{ingredient_type}:{subtype}"]["updated_amount"] += amount
+                        else:
+                            result["details"][f"{ingredient_type}:{subtype}"] = {
+                                "updated_amount": amount,
+                                "status": warning,
+                                "message": f"Inventory {warning} level reached"
+                            }
             
             # Add request metadata to result
             result["request_id"] = payload["request_id"]
             result["client_type"] = payload["client_type"]
             
+            print(result)
             # Put result in response queue
             self._response_queue.put(result)
             return result

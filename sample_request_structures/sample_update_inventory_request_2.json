@@ -1,0 +1,53 @@
+{
+    "request_id": "7b3e9f2a-4d8c-4e1f-9a2b-3c4d5e6f7g8h",
+    "client_type": "scheduler",
+    "function_name": "update_inventory",
+    "payload": {
+        "items": [{
+            "drink_name": "cappuccino",
+            "size": "small", 
+            "cup_id": "H9",
+            "temperature": "hot",
+            "ingredients": {
+                "espresso": {
+                    "type": "regular",
+                    "amount": 1
+                },
+                "milk": {
+                    "type": "whole",
+                    "amount": 150
+                }
+            }
+        },
+        {
+            "drink_name": "cappuccino",
+            "size": "small", 
+            "cup_id": "H9",
+            "temperature": "hot",
+            "ingredients": {
+                "espresso": {
+                    "type": "regular",
+                    "amount": 1
+                },
+                "milk": {
+                    "type": "whole",
+                    "amount": 150
+                }
+            }
+        }],
+        "ingredients": [
+            {
+                "milk": {
+                    "type": "whole",
+                    "amount": 150
+                }
+            },  
+            {
+                "milk": {
+                    "type": "whole",
+                    "amount": 150
+                }
+            }
+        ]
+    }
+}

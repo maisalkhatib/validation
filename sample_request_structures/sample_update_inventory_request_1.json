@@ -1,0 +1,27 @@
+{
+    "request_id": "594d9767-33b6-4e3e-a424-05ccf08f27d8",
+    "client_type": "scheduler",
+    "function_name": "update_inventory",
+    "payload": {
+        "items": [{
+            "drink_name": "cappuccino",
+            "size": "small", 
+            "cup_id": "H9",
+            "temperature": "hot",
+            "ingredients": {
+            "espresso": {
+                "type": "regular",
+                "amount": 1
+            },
+            "milk": {
+                "type": "whole",
+                "amount": 150
+            }
+        }
+    }],
+        "ingredients": [{"cup": {
+                    "type": "H9",
+                    "amount": 1
+                }}]
+    }
+}

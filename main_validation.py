@@ -19,15 +19,20 @@ class MainValidation:
 
         # the inventory manager
         self._inventory_client = InventoryManager(self._db_client)
-        # the main queue where we will receive the requests
-        
+
+        # Queues to receive requests and process responses
         self._request_queue = Queue()
-        # the response queue
         self._response_queue = Queue()
 
         # the workers
         self._request_worker = threading.Thread(target=self.request_worker, daemon=True)
         self._response_worker = threading.Thread(target=self.response_worker, daemon=True)
+
+
+        # event flag to raise when a request is added to the queue
+        self._request_event = threading.Event()
+        # event flag to raise when a response is added to the queue
+        self._response_event = threading.Event()
 
         # initialize the logging
         logging.basicConfig(level=logging.INFO)
@@ -36,14 +41,16 @@ class MainValidation:
 
     def post_request(self, request):
         try:
-            # check if it is a valid request using pydantic !! ALWAYS VALID THOUGH !!
-            if not request or not request.payload or not request.payload.items:
-                # raise a validation error
-                raise HTTPException(status_code=422, detail="Invalid request")
-            # log the request
+            # # check if it is a valid request using pydantic !! ALWAYS VALID THOUGH !!
+            # if not request or not request.payload or not request.payload.items:
+            #     # raise a validation error
+            #     raise HTTPException(status_code=422, detail="Invalid request")
+            # # log the request
             logging.info(f"received request: {request} with request_id: {request.request_id}")
             # if the request is valid, add it to the queue
             self._request_queue.put(request)
+            # raise the event flag
+            self._request_event.set()
         except Exception as e:
             print(e) 
             print("failed to add request to queue")
@@ -122,7 +129,6 @@ class MainValidation:
             }
             self._response_queue.put(error_result)
             return error_result
-
 
 
 
@@ -207,6 +213,7 @@ class MainValidation:
                                 }
                     
                     result["details"][item["drink_name"]] = item_details
+                # NOTE: @ UZAIR fix this to make sure the result is sent to the response queue
                 return result
             else:
                 # invalid client type
@@ -227,20 +234,26 @@ class MainValidation:
                 }
             }
             self._response_queue.put(error_result)
+            
             return error_result
 
 
 
-    def process_request(self):
-        # process the request
-        pass
+    def request_worker(self):
+        while True:
+            self._request_event.wait()
+            request = self._request_queue.get()
+            self._request_event.clear()  # Clear the event flag
+            
+            if request["function_name"] == "update_inventory":
+                self.process_update_inventory_request(request)
+            elif request["function_name"] == "ingredient_status":
+                self.process_inventory_status_request(request)
+            elif request["function_name"] == "pre_check":
+                self.process_pre_check_request(request)
     
     def send_response(self):
         # send the response
-        pass
-
-    def request_worker(self):
-        # process the request
         pass
 
     def response_worker(self):

@@ -16,7 +16,6 @@ class MainValidation:
         "dbname=barns_inventory user=postgres password=QSS2030QSS host=localhost port=5432"
     )
 
-
         # the inventory manager
         self._inventory_client = InventoryManager(self._db_client)
 
@@ -28,15 +27,12 @@ class MainValidation:
         self._request_worker = threading.Thread(target=self.request_worker, daemon=True)
         self._response_worker = threading.Thread(target=self.response_worker, daemon=True)
 
-
-        # event flag to raise when a request is added to the queue
+        # event flags for adding request and response
         self._request_event = threading.Event()
-        # event flag to raise when a response is added to the queue
         self._response_event = threading.Event()
 
         # initialize the logging
         logging.basicConfig(level=logging.INFO)
-
 
 
     def post_request(self, request):
@@ -56,7 +52,7 @@ class MainValidation:
             print("failed to add request to queue")
             # log the error
             logging.error(f"failed to add request to queue: {e}")
-            # return False
+
 
     def process_update_inventory_request(self, payload):
         """
@@ -78,7 +74,7 @@ class MainValidation:
 
                     subtype = details["type"]
                     amount = details["amount"]
-                    
+
                     # Convert shots to grams for coffee_beans
                     if ingredient_type == "coffee_beans":
                         amount = self._inventory_client.convert_shots_to_grams(amount)
@@ -92,7 +88,7 @@ class MainValidation:
                         subtype=subtype,
                         amount=amount  # Negative amount to subtract from inventory
                     )
-                    
+
                     if not success:
                         result["passed"] = False
                         result["details"][f"{ingredient_type}:{subtype}"] = {
@@ -110,11 +106,11 @@ class MainValidation:
                                 "status": warning,
                                 "message": f"Inventory {warning} level reached"
                             }
-            
+
             # Add request metadata to result
             result["request_id"] = payload["request_id"]
             result["client_type"] = payload["client_type"]
-            
+
             # Put result in response queue
             self._response_queue.put(result)
             return result
@@ -183,7 +179,7 @@ class MainValidation:
                             "critical_threshold": critical_threshold,
                             "status": False if current_amount - 1 < critical_threshold else True
                         }
-                    
+
                     # Check other ingredients
                     for ingredient, details in item["ingredients"].items():
                         if ingredient == "espresso":
@@ -221,6 +217,7 @@ class MainValidation:
             final_result = { "request_id": payload["request_id"],
                 "client_type": payload["client_type"], "result": inventory_status}
             self._response_queue.put(final_result)
+            self._response_event.set()
             return final_result
 
         except Exception as e:
@@ -234,28 +231,39 @@ class MainValidation:
                 }
             }
             self._response_queue.put(error_result)
-            
+            # NOTE: @ UZAIR fix this to make sure the result is sent to the response queue
+            self._response_event.set()
             return error_result
-
 
 
     def request_worker(self):
         while True:
-            self._request_event.wait()
-            request = self._request_queue.get()
-            self._request_event.clear()  # Clear the event flag
-            
-            if request["function_name"] == "update_inventory":
-                self.process_update_inventory_request(request)
-            elif request["function_name"] == "ingredient_status":
-                self.process_inventory_status_request(request)
-            elif request["function_name"] == "pre_check":
-                self.process_pre_check_request(request)
-    
-    def send_response(self):
-        # send the response
-        pass
+            try:
+                self._request_event.wait()
+                request = self._request_queue.get()
+                self._request_event.clear()  # Clear the event flag
+                
+                if request["function_name"] == "update_inventory":
+                    self.process_update_inventory_request(request)
+                elif request["function_name"] == "ingredient_status" or request["function_name"] == "pre_check":
+                    self.process_inventory_status_request(request)
+                else:
+                    logging.error(f"Invalid function name: {request['function_name']}")
+            except Exception as e:
+                logging.error(f"Error processing request: {e}")
+
 
     def response_worker(self):
-        # send the response
-        pass
+        while True:
+            try:
+                self._response_event.wait()
+                response = self._response_queue.get()
+                ####################
+                # @NOTE: @Uzair @Mais work with sending the response to the client here
+                ## Ideally have a separate object to handle this
+                print(response)
+            #####################
+                self._response_event.clear()
+            except Exception as e:
+                logging.error(f"Error processing response: {e}")
+

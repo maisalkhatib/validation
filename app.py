@@ -15,8 +15,11 @@ main_validation = MainValidation()
 async def update_inventory(request: UpdateInventoryRequest):
     # used by Dashboard to manually update the inventory
     # used by OMS/Scheduler to update the inventory after a robotic step is complete
+    # convert the request to a json object
+    request_json = request.model_dump()
+    # send the request to the main validation object
+    main_validation.post_request(request_json)
 
-   pass
 
 
 
@@ -43,9 +46,10 @@ async def check_cup_picked(request: CheckCupPickedRequest):
 @app.post("/pre_check") 
 async def pre_check(request: PreCheckRequest):
     """Run a validation function by name with given parameters."""
-    # func_name = request.function
-    # if func_name not in VALIDATORS:
-    #     return {"error": f"No such validation function '{func_name}'", "passed": False}
+    # convert the request to a json object
+    request_json = request.model_dump()
+    # send the request to the main validation object
+    main_validation.post_request(request_json)
 
     # NOTE: Completed in process_inventory_status_request(payload) diff result for diff client_type
     result = {"passed": True, "details": {}}
@@ -69,7 +73,7 @@ async def inventory_status(request: InventoryStatusRequest):
 # NOTE: get the current inventory{High, med, low} for all ingredients
 
 
-# NOTE: update the inventory from dashboard and OMS always subtracts from the inventory(cups, syrups, milk from the dashboard OMS everything)
+# DONE: update the inventory from dashboard and OMS always subtracts from the inventory(cups, syrups, milk from the dashboard OMS everything)
 # NOTE: refill from the dashboard + Have a worker to update the status on inventory level change
 
 

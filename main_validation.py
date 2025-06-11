@@ -160,6 +160,7 @@ class MainValidation:
                             "critical_threshold": critical_threshold,
                             "final_res": final_res #final_res is False if the inventory is empty when the amount is less than the critical threshold
                         }
+            # NOTE: THIS IS PRE-CHECK REQUEST
             elif payload["client_type"] == "scheduler":
                 result = {"passed": True, "details": {}}
                 
@@ -209,6 +210,7 @@ class MainValidation:
                                 }
                     
                     result["details"][item["drink_name"]] = item_details
+                print(result)
                 # NOTE: @ UZAIR fix this to make sure the result is sent to the response queue
                 return result
             else:

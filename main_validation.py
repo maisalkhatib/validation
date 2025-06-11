@@ -163,23 +163,31 @@ class MainValidation:
             # NOTE: THIS IS PRE-CHECK REQUEST
             elif payload["client_type"] == "scheduler":
                 result = {"passed": True, "details": {}}
+                # get the invenoty cache
+                current_inventory_cache = self._inventory_client.inventory_cache.copy()
                 
                 for item in payload["payload"]["items"]:
                     item_details = {}
+                    # set the status for the item to true
+                    item_details["status"] = True
                     
                     # Check cup inventory
                     cup_id = item["cup_id"]
-                    if cup_id in self._inventory_client.inventory_cache["cups"]:
-                        current_amount = self._inventory_client.inventory_cache["cups"][cup_id]["current_amount"]
-                        critical_threshold = self._inventory_client.inventory_cache["cups"][cup_id]["critical_threshold"]
+                    if cup_id in current_inventory_cache["cups"]:
+                        current_amount = current_inventory_cache["cups"][cup_id]["current_amount"]
+                        critical_threshold = current_inventory_cache["cups"][cup_id]["critical_threshold"]
                         if current_amount - 1 < critical_threshold:
                             result["passed"] = False
+                            item_details["status"] = False
                         item_details["cup"] = {
                             "current": current_amount,
                             "needed": 1,
                             "critical_threshold": critical_threshold,
                             "status": False if current_amount - 1 < critical_threshold else True
                         }
+                        if item_details["cup"]["status"] == True:
+                            # update the inventory cache
+                            current_inventory_cache["cups"][cup_id]["current_amount"] = current_amount - 1
 
                     # Check other ingredients
                     for ingredient, details in item["ingredients"].items():
@@ -195,12 +203,13 @@ class MainValidation:
                                 # get the amount against the shot using the self._inventory_client.convert_shots_to_grams(amount)
                                 amount = self._inventory_client.convert_shots_to_grams(item["ingredients"]["espresso"]["amount"])
                             
-                            if subtype in self._inventory_client.inventory_cache[ingredient_type]:
-                                current_amount = self._inventory_client.inventory_cache[ingredient_type][subtype]["current_amount"]
-                                critical_threshold = self._inventory_client.inventory_cache[ingredient_type][subtype]["critical_threshold"]
+                            if subtype in current_inventory_cache[ingredient_type]:
+                                current_amount = current_inventory_cache[ingredient_type][subtype]["current_amount"]
+                                critical_threshold = current_inventory_cache[ingredient_type][subtype]["critical_threshold"]
                                 
                                 if current_amount - amount < critical_threshold:
                                     result["passed"] = False
+                                    item_details["status"] = False
                                     
                                 item_details[ingredient] = {
                                     "current": current_amount,
@@ -208,7 +217,11 @@ class MainValidation:
                                     "critical_threshold": critical_threshold,
                                     "status": False if current_amount - amount < critical_threshold else True
                                 }
+                                if item_details[ingredient]["status"] == True:
+                                # update the inventory cache
+                                    current_inventory_cache[ingredient_type][subtype]["current_amount"] = current_amount - amount
                     
+
                     result["details"][item["drink_name"]] = item_details
                 print(result)
                 # NOTE: @ UZAIR fix this to make sure the result is sent to the response queue

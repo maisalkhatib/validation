@@ -69,15 +69,18 @@ class MainValidation:
                 for ingredient, details in item.items():
                     # Convert espresso to coffee_beans
                     ingredient_type = "coffee_beans" if ingredient == "espresso" else ingredient
+                    # changes_by_mais: why to not use one: cup or cups
                     if ingredient == "cup":
                         ingredient_type = "cups"
 
                     subtype = details["type"]
                     amount = details["amount"]
 
-                    # Convert shots to grams for coffee_beans
-                    if ingredient_type == "coffee_beans":
-                        amount = self._inventory_client.convert_shots_to_grams(amount)
+
+                    # changes_by_mais: commented the conversion since it is in inventory manager
+                    # # Convert shots to grams for coffee_beans
+                    # if ingredient_type == "coffee_beans":
+                    #     amount = self._inventory_client.convert_shots_to_grams(amount)
                     # if the client type is scheduler, then we need to subtract the amount from the inventory
                     if payload["client_type"] == "scheduler":
                         amount = -amount
@@ -96,16 +99,23 @@ class MainValidation:
                             "status": "failed",
                             "message": "Failed to update inventory"
                         }
-                    elif warning in ["warning", "critical"]:
+                    elif warning in ["no_warning", "warning", "critical"]:
                         # if key already exists, then append the amount
                         if f"{ingredient_type}:{subtype}" in result["details"]:
                             result["details"][f"{ingredient_type}:{subtype}"]["updated_amount"] += amount
                         else:
                             result["details"][f"{ingredient_type}:{subtype}"] = {
-                                "updated_amount": amount,
+                                "updated_amount": amount, # changes_by_mais: should it be the absolute value? or the inventory value?
                                 "status": warning,
                                 "message": f"Inventory {warning} level reached"
                             }
+            # changes_by_mais:
+            # NOTE: if the updated inventory is more than the threshold, there is no updates in the result
+            # this is the output: result after update inventory request
+            # {'passed': True, 'details': {}, 'request_id': '7b3e9f2a-4d8c-4e1f-9a2b-3c4d5e6f7g8h', 'client_type': 'scheduler'} 
+            # Inventory updated successfully
+            # mais updated the code to consider the non warning as well
+
 
             # Add request metadata to result
             result["request_id"] = payload["request_id"]
@@ -113,6 +123,8 @@ class MainValidation:
 
             # Put result in response queue
             self._response_queue.put(result)
+            print("result after update inventory request")
+            print(result)
             return result
             
         except Exception as e:

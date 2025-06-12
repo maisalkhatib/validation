@@ -69,15 +69,18 @@ class MainValidation:
                 for ingredient, details in item.items():
                     # Convert espresso to coffee_beans
                     ingredient_type = "coffee_beans" if ingredient == "espresso" else ingredient
+                    # changes_by_mais: why to not use one: cup or cups
                     if ingredient == "cup":
                         ingredient_type = "cups"
 
                     subtype = details["type"]
                     amount = details["amount"]
 
-                    # Convert shots to grams for coffee_beans
-                    if ingredient_type == "coffee_beans":
-                        amount = self._inventory_client.convert_shots_to_grams(amount)
+
+                    # changes_by_mais: commented the conversion since it is in inventory manager
+                    # # Convert shots to grams for coffee_beans
+                    # if ingredient_type == "coffee_beans":
+                    #     amount = self._inventory_client.convert_shots_to_grams(amount)
                     # if the client type is scheduler, then we need to subtract the amount from the inventory
                     if payload["client_type"] == "scheduler":
                         amount = -amount
@@ -96,16 +99,23 @@ class MainValidation:
                             "status": "failed",
                             "message": "Failed to update inventory"
                         }
-                    elif warning in ["warning", "critical"]:
+                    elif warning in ["no_warning", "warning", "critical"]:
                         # if key already exists, then append the amount
                         if f"{ingredient_type}:{subtype}" in result["details"]:
                             result["details"][f"{ingredient_type}:{subtype}"]["updated_amount"] += amount
                         else:
                             result["details"][f"{ingredient_type}:{subtype}"] = {
-                                "updated_amount": amount,
+                                "updated_amount": amount, # changes_by_mais: should it be the absolute value? or the inventory value?
                                 "status": warning,
                                 "message": f"Inventory {warning} level reached"
                             }
+            # changes_by_mais:
+            # NOTE: if the updated inventory is more than the threshold, there is no updates in the result
+            # this is the output: result after update inventory request
+            # {'passed': True, 'details': {}, 'request_id': '7b3e9f2a-4d8c-4e1f-9a2b-3c4d5e6f7g8h', 'client_type': 'scheduler'} 
+            # Inventory updated successfully
+            # mais updated the code to consider the non warning as well
+
 
             # Add request metadata to result
             result["request_id"] = payload["request_id"]
@@ -113,6 +123,8 @@ class MainValidation:
 
             # Put result in response queue
             self._response_queue.put(result)
+            print("result after update inventory request")
+            print(result)
             return result
             
         except Exception as e:
@@ -160,25 +172,34 @@ class MainValidation:
                             "critical_threshold": critical_threshold,
                             "final_res": final_res #final_res is False if the inventory is empty when the amount is less than the critical threshold
                         }
+            # NOTE: THIS IS PRE-CHECK REQUEST
             elif payload["client_type"] == "scheduler":
                 result = {"passed": True, "details": {}}
+                # get the invenoty cache
+                current_inventory_cache = self._inventory_client.inventory_cache.copy()
                 
                 for item in payload["payload"]["items"]:
                     item_details = {}
+                    # set the status for the item to true
+                    item_details["status"] = True
                     
                     # Check cup inventory
                     cup_id = item["cup_id"]
-                    if cup_id in self._inventory_client.inventory_cache["cups"]:
-                        current_amount = self._inventory_client.inventory_cache["cups"][cup_id]["current_amount"]
-                        critical_threshold = self._inventory_client.inventory_cache["cups"][cup_id]["critical_threshold"]
+                    if cup_id in current_inventory_cache["cups"]:
+                        current_amount = current_inventory_cache["cups"][cup_id]["current_amount"]
+                        critical_threshold = current_inventory_cache["cups"][cup_id]["critical_threshold"]
                         if current_amount - 1 < critical_threshold:
                             result["passed"] = False
+                            item_details["status"] = False
                         item_details["cup"] = {
                             "current": current_amount,
                             "needed": 1,
                             "critical_threshold": critical_threshold,
                             "status": False if current_amount - 1 < critical_threshold else True
                         }
+                        if item_details["cup"]["status"] == True:
+                            # update the inventory cache
+                            current_inventory_cache["cups"][cup_id]["current_amount"] = current_amount - 1
 
                     # Check other ingredients
                     for ingredient, details in item["ingredients"].items():
@@ -194,12 +215,13 @@ class MainValidation:
                                 # get the amount against the shot using the self._inventory_client.convert_shots_to_grams(amount)
                                 amount = self._inventory_client.convert_shots_to_grams(item["ingredients"]["espresso"]["amount"])
                             
-                            if subtype in self._inventory_client.inventory_cache[ingredient_type]:
-                                current_amount = self._inventory_client.inventory_cache[ingredient_type][subtype]["current_amount"]
-                                critical_threshold = self._inventory_client.inventory_cache[ingredient_type][subtype]["critical_threshold"]
+                            if subtype in current_inventory_cache[ingredient_type]:
+                                current_amount = current_inventory_cache[ingredient_type][subtype]["current_amount"]
+                                critical_threshold = current_inventory_cache[ingredient_type][subtype]["critical_threshold"]
                                 
                                 if current_amount - amount < critical_threshold:
                                     result["passed"] = False
+                                    item_details["status"] = False
                                     
                                 item_details[ingredient] = {
                                     "current": current_amount,
@@ -207,8 +229,13 @@ class MainValidation:
                                     "critical_threshold": critical_threshold,
                                     "status": False if current_amount - amount < critical_threshold else True
                                 }
+                                if item_details[ingredient]["status"] == True:
+                                # update the inventory cache
+                                    current_inventory_cache[ingredient_type][subtype]["current_amount"] = current_amount - amount
                     
+
                     result["details"][item["drink_name"]] = item_details
+                print(result)
                 # NOTE: @ UZAIR fix this to make sure the result is sent to the response queue
                 return result
             else:

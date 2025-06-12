@@ -48,7 +48,7 @@ class CupPosition(int, Enum):
 class IngredientDetail(BaseModel):
     type: str   
     # integer only but never 0
-    amount: int
+    amount: float
 
 # One drink item
 class DrinkItem(BaseModel):

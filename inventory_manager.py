@@ -66,8 +66,8 @@ class InventoryManager:
                         "critical_threshold": limits["critical_threshold"],
                         "max_capacity": limits["max_capacity"]
                     }
-            self.logger.info(f"Loaded inventory data for {len(self.inventory_cache)} ingredient types")
-            self.logger.debug(f"Inventory cache: {self.inventory_cache}")
+            self.logger.info(f"Loaded inventory data!")
+
 
         except Exception as e:
             self.logger.error(f"Error loading inventory data: {e}")
@@ -156,10 +156,12 @@ class InventoryManager:
                 
                 self.logger.info(f"Updated {ingredient_type}:{subtype} from {current_amount} to {new_amount}")
 
-                if new_amount < warning_threshold:
-                    return True, "warning"
-                elif new_amount < critical_threshold:
+                # changes_by_mais:
+                # switch the order of the critical and warning
+                if new_amount < critical_threshold:
                     return True, "critical"
+                elif new_amount < warning_threshold:
+                    return True, "warning"
                 
             return success, "no_warning"
         

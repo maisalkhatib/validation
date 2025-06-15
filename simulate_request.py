@@ -16,7 +16,7 @@ sample_request_structures_path = os.path.join(current_dir, "sample_request_struc
 
 def test_update_inventory_request():
 
-    with open("sample_request_structures/sample_update_inventory_request_2.json", "r") as f:
+    with open("sample_request_structures/sample_update_inventory_request_3.json", "r") as f:
     # with open("sample_request_structures/sample_update_inventory_request_2.json", "r") as f:
         payload = json.load(f)
 
@@ -51,7 +51,8 @@ def test_pre_check_request():
     print("Pre check request processed successfully")
 
 if __name__ == "__main__":
-    # test_update_inventory_request()
+    test_update_inventory_request()
     # test_ingredient_status_request()
+    # test_pre_check_request()
     test_pre_check_request()
     pass

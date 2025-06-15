@@ -62,6 +62,9 @@ async def inventory_status(request: InventoryStatusRequest):
     # func_name = request.function
     # if func_name not in VALIDATORS:
     #     return {"error": f"No such validation function '{func_name}'", "passed": False}
+    request_json = request.model_dump()
+    # send the request to the main validation object
+    main_validation.post_request(request_json)
 
     # NOTE: Completed in process_inventory_status_request(payload) diff result for diff client_type
     result = {"passed": True, "details": {}}

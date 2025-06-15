@@ -1,4 +1,4 @@
-from typing import List, Dict, Annotated
+from typing import List, Dict, Annotated, Optional
 from pydantic import BaseModel, Field, PositiveInt
 from enum import Enum
 
@@ -104,3 +104,5 @@ class InventoryStatusRequest(BaseModel):
     request_id: str
     client_type: ClientType
     request_type: RequestType
+    # here payload is optional
+    payload: Optional[PreCheckPayload] = None

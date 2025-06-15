@@ -63,6 +63,10 @@ class MainValidation:
         try:
             # Initialize result tracking
             result = {"passed": True, "details": {}}
+
+            # Add request metadata to result
+            result["request_id"] = payload["request_id"]
+            result["client_type"] = payload["client_type"]
             
             # Process each item's ingredients
             for item in payload["payload"]["ingredients"]:
@@ -76,11 +80,6 @@ class MainValidation:
                     subtype = details["type"]
                     amount = details["amount"]
 
-
-                    # changes_by_mais: commented the conversion since it is in inventory manager
-                    # # Convert shots to grams for coffee_beans
-                    # if ingredient_type == "coffee_beans":
-                    #     amount = self._inventory_client.convert_shots_to_grams(amount)
                     # if the client type is scheduler, then we need to subtract the amount from the inventory
                     if payload["client_type"] == "scheduler":
                         amount = -amount
@@ -91,7 +90,7 @@ class MainValidation:
                         subtype=subtype,
                         amount=amount  # Negative amount to subtract from inventory
                     )
-
+                    # to be discussed: why the type and subtype in this format: "coffee_beans:regular"
                     if not success:
                         result["passed"] = False
                         result["details"][f"{ingredient_type}:{subtype}"] = {
@@ -109,17 +108,6 @@ class MainValidation:
                                 "status": warning,
                                 "message": f"Inventory {warning} level reached"
                             }
-            # changes_by_mais:
-            # NOTE: if the updated inventory is more than the threshold, there is no updates in the result
-            # this is the output: result after update inventory request
-            # {'passed': True, 'details': {}, 'request_id': '7b3e9f2a-4d8c-4e1f-9a2b-3c4d5e6f7g8h', 'client_type': 'scheduler'} 
-            # Inventory updated successfully
-            # mais updated the code to consider the non warning as well
-
-
-            # Add request metadata to result
-            result["request_id"] = payload["request_id"]
-            result["client_type"] = payload["client_type"]
 
             # Put result in response queue
             self._response_queue.put(result)
@@ -140,14 +128,14 @@ class MainValidation:
 
 
 
-    def process_inventory_status_request(self, payload):
+    def process_ingredient_status_request(self, payload):
         # @Uzair verify this works properly
         """ !!!!!!! NOTE: @Uzair refactor this function to be more efficient and readable
         Used to get the inventory status for the entire inventory OR a specific item in the inventory
         """
         try:
+            inventory_status = {}
             if payload["client_type"] == "dashboard":
-                inventory_status = {}
                 
                 for ingredient_type, subtypes in self._inventory_client.inventory_cache.items():
                     inventory_status[ingredient_type] = {}
@@ -172,9 +160,41 @@ class MainValidation:
                             "critical_threshold": critical_threshold,
                             "final_res": final_res #final_res is False if the inventory is empty when the amount is less than the critical threshold
                         }
-            # NOTE: THIS IS PRE-CHECK REQUEST
-            elif payload["client_type"] == "scheduler":
-                result = {"passed": True, "details": {}}
+            
+            else:
+                # invalid client type
+                inventory_status = {"final_res": False, "details": "Invalid client type"}
+            final_result = { "request_id": payload["request_id"],
+                "client_type": payload["client_type"], "details": inventory_status}
+            self._response_queue.put(final_result)
+            self._response_event.set()
+            return final_result
+
+        except Exception as e:
+            logging.error(f"Error processing inventory status request: {e}")
+            error_result = {
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "result": {
+                    "final_res": False,
+                    "details": f"Error processing request: {str(e)}"
+                }
+            }
+            self._response_queue.put(error_result)
+            # NOTE: @ UZAIR fix this to make sure the result is sent to the response queue
+            self._response_event.set()
+            return error_result
+
+    def process_pre_check_request(self, payload):
+        # NOTE: THIS IS PRE-CHECK REQUEST
+        try: 
+            result = {"passed": True, "details": {}}
+            # Add request metadata to result
+            result["request_id"] = payload["request_id"]
+            result["client_type"] = payload["client_type"]
+
+
+            if payload["client_type"] == "scheduler":
                 # get the invenoty cache
                 current_inventory_cache = self._inventory_client.inventory_cache.copy()
                 
@@ -192,6 +212,7 @@ class MainValidation:
                             result["passed"] = False
                             item_details["status"] = False
                         item_details["cup"] = {
+                            "type": cup_id,
                             "current": current_amount,
                             "needed": 1,
                             "critical_threshold": critical_threshold,
@@ -224,6 +245,7 @@ class MainValidation:
                                     item_details["status"] = False
                                     
                                 item_details[ingredient] = {
+                                    "type": subtype,
                                     "current": current_amount,
                                     "needed": amount,
                                     "critical_threshold": critical_threshold,
@@ -236,32 +258,30 @@ class MainValidation:
 
                     result["details"][item["drink_name"]] = item_details
                 print(result)
-                # NOTE: @ UZAIR fix this to make sure the result is sent to the response queue
-                return result
+
             else:
                 # invalid client type
-                inventory_status = {"final_res": False, "details": "Invalid client type"}
-            final_result = { "request_id": payload["request_id"],
-                "client_type": payload["client_type"], "result": inventory_status}
-            self._response_queue.put(final_result)
+                result = {"request_id": result['request_id'], 
+                          "client_type": result['client_type'], 
+                          "passed": False, 
+                          "details": "Invalid client type"}
+                
+            self._response_queue.put(result)
             self._response_event.set()
-            return final_result
+            return result
 
         except Exception as e:
-            logging.error(f"Error processing inventory status request: {e}")
+            logging.error(f"Error processing pre-check request: {e}")
             error_result = {
                 "request_id": payload["request_id"],
                 "client_type": payload["client_type"],
-                "result": {
-                    "final_res": False,
-                    "details": f"Error processing request: {str(e)}"
-                }
+                "passed": False,
+                "details": f"Error processing request: {str(e)}"
             }
             self._response_queue.put(error_result)
             # NOTE: @ UZAIR fix this to make sure the result is sent to the response queue
             self._response_event.set()
             return error_result
-
 
     def request_worker(self):
         while True:
@@ -273,7 +293,7 @@ class MainValidation:
                 if request["function_name"] == "update_inventory":
                     self.process_update_inventory_request(request)
                 elif request["function_name"] == "ingredient_status" or request["function_name"] == "pre_check":
-                    self.process_inventory_status_request(request)
+                    self.process_ingredient_status_request(request)
                 else:
                     logging.error(f"Invalid function name: {request['function_name']}")
             except Exception as e:

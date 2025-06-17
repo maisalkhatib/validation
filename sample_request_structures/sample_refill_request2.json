@@ -1,0 +1,21 @@
+{
+    "request_id": "1234567890",
+    "client_type": "dashboard",
+    "function_name": "refill_ingredient",
+    "payload": {
+        "ingredients": [
+            {
+                "ingredient_type": "espresso",
+                "subtype": "regular"
+            },
+            {
+                "ingredient_type": "milk",
+                "subtype": "whole"
+            },
+            {
+                "ingredient_type": "cup",
+                "subtype": "H9"
+            }
+        ]
+    }
+}

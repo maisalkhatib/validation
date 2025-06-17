@@ -130,6 +130,7 @@ class MainValidation:
 
     def process_ingredient_status_request(self, payload):
         # @Uzair verify this works properly
+        # i believe the structure of the request should be without any item in the payload
         """ !!!!!!! NOTE: @Uzair refactor this function to be more efficient and readable
         Used to get the inventory status for the entire inventory OR a specific item in the inventory
         """
@@ -160,6 +161,12 @@ class MainValidation:
                             "critical_threshold": critical_threshold,
                             "final_res": final_res #final_res is False if the inventory is empty when the amount is less than the critical threshold
                         }
+                        
+                        # another suggestion for response structure:
+                        # inventory_status[ingredient_type][subtype] = {
+                        #     "status": status, # better to be high, medium, low
+                        #     "current_amount": current_amount,
+                        # }
             
             else:
                 # invalid client type
@@ -283,6 +290,53 @@ class MainValidation:
             self._response_event.set()
             return error_result
 
+    def process_refill_ingredient_request(self, payload):
+        try:
+            result = {"passed": True, "details": {}}
+            result["request_id"] = payload["request_id"]
+            result["client_type"] = payload["client_type"]
+
+            for ingredient in payload["payload"]["ingredients"]:
+                ingredient_type = ingredient["ingredient_type"]
+                subtype = ingredient["subtype"]
+
+                if ingredient_type == "espresso":
+                    ingredient_type = "coffee_beans"
+                elif ingredient_type == "cup":
+                    ingredient_type = "cups"
+
+                is_refilled = self._inventory_client.refill_inventory(ingredient_type, subtype)
+                
+                if not is_refilled:
+                    result["passed"] = False
+                    result["details"][f"{ingredient_type}"] = {
+                        "type": subtype,
+                        "status": "failed",
+                        "message": "Failed to refill inventory"
+                    }
+                
+                else:
+                    result["details"][f"{ingredient_type}"] = {
+                        "type": subtype,
+                        "status": "success",
+                        "message": "Inventory refilled successfully"
+                    }
+            
+            self._response_queue.put(result)
+            self._response_event.set()
+            return result
+            
+        except Exception as e:
+            logging.error(f"Error processing refill ingredient request: {e}")
+            error_result = {
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "passed": False,
+                "details": f"Error processing request: {str(e)}"
+            }
+            self._response_queue.put(error_result)
+            return error_result
+        
     def request_worker(self):
         while True:
             try:

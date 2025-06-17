@@ -144,6 +144,9 @@ class ValidationServiceApp:
             
             elif function_name == "ingredient_status":
                 result = self.main_validation.process_ingredient_status_request(message)
+            
+            elif function_name == "refill_ingredient":
+                result = self.main_validation.process_refill_ingredient_request(message)
                 
             else:
                 # Unknown function

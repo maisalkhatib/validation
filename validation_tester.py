@@ -257,6 +257,53 @@ class ValidationServiceTester:
         
         return self.send_message(message)
     
+    def test_refill_ingredient(self):
+        """Test refill ingredient request from dashboard"""
+        print("\n" + "="*60)
+        print("🧪 TEST 5: Refill Ingredient Request")
+        print("="*60)   
+        
+        request_id = str(uuid.uuid4())
+        message = {
+    "request_id": "1234567890",
+    "client_type": "dashboard",
+    "function_name": "refill_ingredient",
+    "payload": {
+        "ingredients": [
+            {
+                "ingredient_type": "espresso",
+                "subtype": "regular"
+            },
+            {
+                "ingredient_type": "milk",
+                "subtype": "whole"
+            },
+            {
+                "ingredient_type": "cup",
+                "subtype": "H9"
+            },
+            {
+                "ingredient_type": "milk",
+                "subtype": "oat"
+            },
+            {
+                "ingredient_type": "syrup",
+                "subtype": "vanilla"
+            },
+            {
+                "ingredient_type": "cup",
+                "subtype": "C9"
+            },
+            {
+                "ingredient_type": "dummy",
+                "subtype": "C12"
+            }
+        ]
+    }
+}
+        
+        return self.send_message(message)
+
     def test_malformed_message(self):
         """Test malformed JSON message"""
         print("\n" + "="*60)
@@ -324,6 +371,13 @@ class ValidationServiceTester:
             response_4 = self.wait_for_response(request_id_4)
             test_results.append(("Invalid Function", response_4 is not None))
         
+        # Test 7: Refill Ingredient
+        request_id_7 = self.test_refill_ingredient()
+        if request_id_7:
+            time.sleep(2)
+            response_7 = self.wait_for_response(request_id_7)
+            test_results.append(("Refill Ingredient", response_7 is not None))
+        
         # Test 5: Malformed Message
         self.test_malformed_message()
         time.sleep(2)
@@ -361,6 +415,7 @@ class ValidationServiceTester:
             print("4. Invalid Function")
             print("5. Malformed Message")
             print("6. Run All Tests")
+            print("7. Refill Ingredient")
             print("0. Exit")
             
             choice = input("\nEnter choice (0-6): ").strip()
@@ -369,6 +424,7 @@ class ValidationServiceTester:
                 break
             elif choice == "1":
                 request_id = self.test_scheduler_pre_check()
+                print(f"request_id_1: {request_id}")
                 if request_id:
                     print(f"⏳ Waiting for response...")
                     response = self.wait_for_response(request_id)
@@ -391,6 +447,11 @@ class ValidationServiceTester:
                 self.test_malformed_message()
             elif choice == "6":
                 self.run_all_tests()
+            elif choice == "7":
+                request_id = self.test_refill_ingredient()
+                if request_id:
+                    print(f"⏳ Waiting for response...")
+                    response = self.wait_for_response(request_id)
             else:
                 print("❌ Invalid choice")
         

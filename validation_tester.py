@@ -195,6 +195,12 @@ class ValidationServiceTester:
                         }
                     },
                     {
+                        "milk": {
+                            "type": "whole",
+                            "amount": 150
+                        }
+                    },
+                    {
                         "cup": {
                             "type": "H9",
                             "amount": 1

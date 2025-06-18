@@ -156,6 +156,7 @@ class InventoryManager:
                 
                 self.logger.info(f"Updated {ingredient_type}:{subtype} from {current_amount} to {new_amount}")
 
+                print(f"inside update_inventory: new_amount: {new_amount}, critical_threshold: {critical_threshold}, warning_threshold: {warning_threshold}")
                 # changes_by_mais:
                 # switch the order of the critical and warning
                 if new_amount < critical_threshold:
@@ -163,6 +164,7 @@ class InventoryManager:
                 elif new_amount < warning_threshold:
                     return True, "warning"
                 
+                print(f"inside update_inventory: success: {success}, warning: no_warning")
             return success, "no_warning"
         
         except Exception as e:

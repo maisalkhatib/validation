@@ -90,20 +90,22 @@ class MainValidation:
                         subtype=subtype,
                         amount=amount  # Negative amount to subtract from inventory
                     )
+                    print(f"success: {success}, warning: {warning}")
                     # to be discussed: why the type and subtype in this format: "coffee_beans:regular"
                     if not success:
                         result["passed"] = False
-                        result["details"][f"{ingredient_type}:{subtype}"] = {
+                        result["details"][ingredient_type] = {
+                            "type": subtype,
                             "updated_amount": 0,
                             "status": "failed",
                             "message": "Failed to update inventory"
                         }
                     elif warning in ["no_warning", "warning", "critical"]:
-                        # if key already exists, then append the amount
-                        if f"{ingredient_type}:{subtype}" in result["details"]:
-                            result["details"][f"{ingredient_type}:{subtype}"]["updated_amount"] += amount
+                        if ingredient_type in result["details"] and subtype in result["details"][ingredient_type].values():
+                            result["details"][ingredient_type]["updated_amount"] += amount
                         else:
-                            result["details"][f"{ingredient_type}:{subtype}"] = {
+                            result["details"][ingredient_type] = {
+                                "type": subtype,
                                 "updated_amount": amount, # changes_by_mais: should it be the absolute value? or the inventory value?
                                 "status": warning,
                                 "message": f"Inventory {warning} level reached"

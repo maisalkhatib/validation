@@ -9,7 +9,7 @@ The Validation Service is a microservice that handles inventory and computer vis
 - **Pre-check**: Validate ingredient availability before order/item processing.
 - **Update Inventory**: Update ingredient levels after consumption.
 - **Ingredient Status**: Get the current ingredients' status and levels.
-- **Refill Inventory:** Refill the inventory **(TO-DO: refill function and rules).**
+- **Refill Inventory:** Refill the inventory.
 
 **For Computer Vision:**
 

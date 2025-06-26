@@ -53,7 +53,7 @@ class DatabaseClient:
             with self._get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     query = """
-                        SELECT current_amount 
+                        SELECT current_amount , last_updated
                         FROM inventory 
                         WHERE ingredient_type = %s AND subtype = %s
                     """
@@ -62,7 +62,8 @@ class DatabaseClient:
                     
                     if result:
                         return {
-                            "current_amount": float(result['current_amount'])
+                            "current_amount": float(result['current_amount']),
+                            "last_updated": result['last_updated']
                         }
                     else:
                         self.logger.warning(f"No inventory found for {ingredient_type}:{subtype}")
@@ -74,7 +75,7 @@ class DatabaseClient:
     
     def update_inventory(self, ingredient_type: str, subtype: str, new_amount: float) -> bool:
         """
-        Update the current amount for an ingredient
+        Update the current amount for an ingredient with pessimistic locking
         Args:
             ingredient_type: Type of ingredient
             subtype: Subtype
@@ -85,12 +86,27 @@ class DatabaseClient:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    query = """
+                    # First, lock the specific row to prevent race conditions
+                    lock_query = """
+                        SELECT current_amount 
+                        FROM inventory 
+                        WHERE ingredient_type = %s AND subtype = %s
+                        FOR UPDATE
+                    """
+                    cursor.execute(lock_query, (ingredient_type, subtype))
+                    locked_row = cursor.fetchone()
+                    
+                    if not locked_row:
+                        self.logger.warning(f"No inventory found to lock for {ingredient_type}:{subtype}")
+                        return False
+                    
+                    # Now update the locked row
+                    update_query = """
                         UPDATE inventory 
                         SET current_amount = %s, last_updated = CURRENT_TIMESTAMP
                         WHERE ingredient_type = %s AND subtype = %s
                     """
-                    cursor.execute(query, (new_amount, ingredient_type, subtype))
+                    cursor.execute(update_query, (new_amount, ingredient_type, subtype))
                     
                     if cursor.rowcount > 0:
                         self.logger.info(f"Updated {ingredient_type}:{subtype} to {new_amount}")
@@ -119,17 +135,25 @@ class DatabaseClient:
             return False
 
 
-# # Example usage:
-# if __name__ == "__main__":
-#     # Initialize client
-#     db_client = DatabaseClient(
-#         "dbname=barns_inventory user=postgres password=QSS2030QSS host=localhost port=5432"
-#     )
+# Example usage:
+if __name__ == "__main__":
+    # Initialize client
+    db_client = DatabaseClient(
+        "dbname=barns_inventory user=postgres password=QSS2030QSS host=localhost port=5432"
+    )
     
-#     # Get specific inventory
-#     coffee_inventory = db_client.get_inventory("coffee_beans", "regular")
-#     print(f"Regular coffee beans: {coffee_inventory}")
+    # Get specific inventory
+    coffee_inventory = db_client.get_inventory("coffee_beans", "regular")
+    print(f"Regular coffee beans: {coffee_inventory}")
     
-#     # Update amount
-#     success = db_client.update_inventory("coffee_beans", "regular", 2600.0)
-#     print(f"Update successful: {success}")
+    # Update amount
+    success = db_client.update_inventory("coffee_beans", "regular", 2600.0)
+    print(f"Update successful: {success}")
+
+    # update the inventory for milk
+    success = db_client.update_inventory("milk", "whole", 2600.0)
+    print(f"Update successful: {success}")
+
+    # update the inventory for milk
+    success = db_client.update_inventory("milk", "whole", 2600.0)
+    print(f"Update successful: {success}")

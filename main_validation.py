@@ -8,6 +8,7 @@ from queue import Queue
 from inventory_manager import InventoryManager
 from pydantic_req_structure import InventoryStatusRequest, ClientType
 from db_client import DatabaseClient
+from coffee_beans_detector import CoffeeBeansDetector
 
 
 class MainValidation:
@@ -18,6 +19,7 @@ class MainValidation:
 
         # the inventory manager
         self._inventory_client = InventoryManager(self._db_client)
+        self._coffee_beans_detector = CoffeeBeansDetector()
 
         # Queues to receive requests and process responses
         self._request_queue = Queue()
@@ -130,70 +132,72 @@ class MainValidation:
 
 
 
-    def process_ingredient_status_request(self, payload):
-        # @Uzair verify this works properly
-        # i believe the structure of the request should be without any item in the payload
-        """ !!!!!!! NOTE: @Uzair refactor this function to be more efficient and readable
-        Used to get the inventory status for the entire inventory OR a specific item in the inventory
-        """
-        try:
-            inventory_status = {}
-            if payload["client_type"] == "dashboard":
+    # def process_ingredient_status_request(self, payload):
+    #     # @Uzair verify this works properly
+    #     # i believe the structure of the request should be without any item in the payload
+    #     """ !!!!!!! NOTE: @Uzair refactor this function to be more efficient and readable
+    #     Used to get the inventory status for the entire inventory OR a specific item in the inventory
+    #     """
+    #     try:
+    #         inventory_status = {}
+    #         if payload["client_type"] == "dashboard" or payload["client_type"] == "api_bridge":
                 
-                for ingredient_type, subtypes in self._inventory_client.inventory_cache.items():
-                    inventory_status[ingredient_type] = {}
+    #             for ingredient_type, subtypes in self._inventory_client.inventory_cache.items():
+    #                 inventory_status[ingredient_type] = {}
 
-                    for subtype, data in subtypes.items():
-                        current_amount = data["current_amount"]
-                        warning_threshold = data["warning_threshold"]
-                        critical_threshold = data["critical_threshold"]
+    #                 for subtype, data in subtypes.items():
+    #                     current_amount = data["current_amount"]
+    #                     warning_threshold = data["warning_threshold"]
+    #                     critical_threshold = data["critical_threshold"]
 
-                        status = "full"
-                        final_res = True
-                        if current_amount < critical_threshold:
-                            status = "empty"
-                            final_res = False
-                        elif current_amount < warning_threshold:
-                            status = "low"
+    #                     status = "full"
+    #                     final_res = True
+    #                     if current_amount < critical_threshold:
+    #                         status = "empty"
+    #                         final_res = False
+    #                     elif current_amount < warning_threshold:
+    #                         status = "low"
 
-                        inventory_status[ingredient_type][subtype] = {
-                            "status": status,
-                            "current_amount": current_amount,
-                            "warning_threshold": warning_threshold,
-                            "critical_threshold": critical_threshold,
-                            "final_res": final_res #final_res is False if the inventory is empty when the amount is less than the critical threshold
-                        }
+    #                     inventory_status[ingredient_type][subtype] = {
+    #                         "status": status,
+    #                         "current_amount": current_amount,
+    #                         "warning_threshold": warning_threshold,
+    #                         "critical_threshold": critical_threshold,
+    #                         "final_res": final_res #final_res is False if the inventory is empty when the amount is less than the critical threshold
+    #                     }
                         
-                        # another suggestion for response structure:
-                        # inventory_status[ingredient_type][subtype] = {
-                        #     "status": status, # better to be high, medium, low
-                        #     "current_amount": current_amount,
-                        # }
+    #                     # another suggestion for response structure:
+    #                     # inventory_status[ingredient_type][subtype] = {
+    #                     #     "status": status, # better to be high, medium, low
+    #                     #     "current_amount": current_amount,
+    #                     # }
             
-            else:
-                # invalid client type
-                inventory_status = {"final_res": False, "details": "Invalid client type"}
-            final_result = { "request_id": payload["request_id"],
-                "client_type": payload["client_type"], "details": inventory_status}
-            self._response_queue.put(final_result)
-            self._response_event.set()
-            return final_result
+    #         else:
+    #             # invalid client type
+    #             inventory_status = {"final_res": False, "details": "Invalid client type"}
+    #         final_result = { "passed": True, "request_id": payload["request_id"],
+    #             "client_type": payload["client_type"], "details": inventory_status}
+    #         self._response_queue.put(final_result)
+    #         self._response_event.set()
+    #         return final_result
 
-        except Exception as e:
-            logging.error(f"Error processing inventory status request: {e}")
-            error_result = {
-                "request_id": payload["request_id"],
-                "client_type": payload["client_type"],
-                "result": {
-                    "final_res": False,
-                    "details": f"Error processing request: {str(e)}"
-                }
-            }
-            self._response_queue.put(error_result)
-            # NOTE: @ UZAIR fix this to make sure the result is sent to the response queue
-            self._response_event.set()
-            return error_result
+    #     except Exception as e:
+    #         logging.error(f"Error processing inventory status request: {e}")
+    #         error_result = {
+    #             "passed": False,
+    #             "request_id": payload["request_id"],
+    #             "client_type": payload["client_type"],
+    #             "result": {
+    #                 "final_res": False,
+    #                 "details": f"Error processing request: {str(e)}"
+    #             }
+    #         }
+    #         self._response_queue.put(error_result)
+    #         # NOTE: @ UZAIR fix this to make sure the result is sent to the response queue
+    #         self._response_event.set()
+    #         return error_result
 
+    
     def process_pre_check_request(self, payload):
         # NOTE: THIS IS PRE-CHECK REQUEST
         try: 
@@ -292,42 +296,76 @@ class MainValidation:
             self._response_event.set()
             return error_result
 
+    # def process_refill_ingredient_request(self, payload):
+    #     try:
+    #         result = {"passed": True, "details": {}}
+    #         result["request_id"] = payload["request_id"]
+    #         result["client_type"] = payload["client_type"]
+
+    #         for ingredient in payload["payload"]["ingredients"]:
+    #             ingredient_type = ingredient["ingredient_type"]
+    #             subtype = ingredient["subtype"]
+
+    #             if ingredient_type == "espresso":
+    #                 ingredient_type = "coffee_beans"
+    #             elif ingredient_type == "cup":
+    #                 ingredient_type = "cups"
+
+    #             is_refilled = self._inventory_client.refill_inventory(ingredient_type, subtype)
+                
+    #             if not is_refilled:
+    #                 result["passed"] = False
+    #                 result["details"][f"{ingredient_type}"] = {
+    #                     "type": subtype,
+    #                     "status": "failed",
+    #                     "message": "Failed to refill inventory"
+    #                 }
+                
+    #             else:
+    #                 result["details"][f"{ingredient_type}"] = {
+    #                     "type": subtype,
+    #                     "status": "success",
+    #                     "message": "Inventory refilled successfully"
+    #                 }
+            
+    #         self._response_queue.put(result)
+    #         self._response_event.set()
+    #         return result
+            
+    #     except Exception as e:
+    #         logging.error(f"Error processing refill ingredient request: {e}")
+    #         error_result = {
+    #             "request_id": payload["request_id"],
+    #             "client_type": payload["client_type"],
+    #             "passed": False,
+    #             "details": f"Error processing request: {str(e)}"
+    #         }
+    #         self._response_queue.put(error_result)
+    #         return error_result
+    
+    
     def process_refill_ingredient_request(self, payload):
         try:
+            # Extract parameters from payload
+            ingredient_type = payload.get("payload", {}).get("ingredient_type", None)
+            subtype = payload.get("payload", {}).get("subtype", None)
+
             result = {"passed": True, "details": {}}
             result["request_id"] = payload["request_id"]
             result["client_type"] = payload["client_type"]
 
-            for ingredient in payload["payload"]["ingredients"]:
-                ingredient_type = ingredient["ingredient_type"]
-                subtype = ingredient["subtype"]
-
-                if ingredient_type == "espresso":
-                    ingredient_type = "coffee_beans"
-                elif ingredient_type == "cup":
-                    ingredient_type = "cups"
-
-                is_refilled = self._inventory_client.refill_inventory(ingredient_type, subtype)
-                
-                if not is_refilled:
-                    result["passed"] = False
-                    result["details"][f"{ingredient_type}"] = {
-                        "type": subtype,
-                        "status": "failed",
-                        "message": "Failed to refill inventory"
-                    }
-                
-                else:
-                    result["details"][f"{ingredient_type}"] = {
-                        "type": subtype,
-                        "status": "success",
-                        "message": "Inventory refilled successfully"
-                    }
+            is_refilled = self._inventory_client.refill_inventory(
+                ingredient_type=ingredient_type,
+                subtype=subtype)
             
+            if not is_refilled:
+                result["passed"] = False
+                result["details"]["error"] = "Failed to refill inventory"
+
             self._response_queue.put(result)
             self._response_event.set()
             return result
-            
+        
         except Exception as e:
             logging.error(f"Error processing refill ingredient request: {e}")
             error_result = {
@@ -337,8 +375,120 @@ class MainValidation:
                 "details": f"Error processing request: {str(e)}"
             }
             self._response_queue.put(error_result)
+            self._response_event.set()
+            return error_result
+
+    def process_ingredient_status_request(self, payload):
+        """
+        Process ingredient status request with flexible filtering
+        """
+        try:
+            # Extract parameters from payload
+            ingredient_type = payload.get("payload", {}).get("ingredient_type", None)
+            subtype = payload.get("payload", {}).get("subtype", None)
+            print("###################################")
+            print(ingredient_type, subtype)
+            print("###################################")
+            print(payload)
+            # Get status from inventory manager
+            inventory_status = self._inventory_client.get_inventory_status(
+                ingredient_type=ingredient_type,
+                subtype=subtype
+            )
+            print(inventory_status)
+            
+            final_result = {
+                "passed": True,
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "details": inventory_status
+            }
+            
+            self._response_queue.put(final_result)
+            self._response_event.set()
+            return final_result
+            
+        except Exception as e:
+            logging.error(f"Error processing inventory status request: {e}")
+            error_result = {
+                "passed": False,
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "details": {"error": f"Error processing request: {str(e)}"}
+            }
+            self._response_queue.put(error_result)
+            self._response_event.set()
+            return error_result
+    
+
+    def process_category_summary_request(self, payload):
+        """Process category summary request"""
+        try:
+            category_summary = self._inventory_client.get_category_summary()
+            
+            final_result = {
+                "passed": True,
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "details": category_summary
+            }
+            
+            self._response_queue.put(final_result)
+            self._response_event.set()
+            return final_result
+            
+        except Exception as e:
+            logging.error(f"Error processing category summary request: {e}")
+            error_result = {
+                "passed": False,
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "details": {"error": f"Error processing request: {str(e)}"}
+            }
+            self._response_queue.put(error_result)
+            self._response_event.set()
+            return error_result
+
+    def process_stock_level_request(self, payload):
+        """Process inventory stock level statistics request"""
+        try:
+            stock_level = self._inventory_client.get_inventory_stock_level_stats()
+            
+            final_result = {
+                "passed": True,
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "details": stock_level
+            }
+            
+            self._response_queue.put(final_result)
+            self._response_event.set()
+            return final_result
+            
+        except Exception as e:
+            logging.error(f"Error processing inventory severity request: {e}")
+            error_result = {
+                "passed": False,
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "details": {"error": f"Error processing request: {str(e)}"}
+            }
+            self._response_queue.put(error_result)
+            self._response_event.set()
             return error_result
         
+
+    def process_coffee_beans_detection_request(self):
+        try:
+            result = self._coffee_beans_detector.detect_coffee_beans()
+            # self._response_queue.put(result)
+            # self._response_event.set()
+            return result
+        except Exception as e:
+            logging.error(f"Error processing coffee beans detection request: {e}")
+
+            
+    
     def request_worker(self):
         while True:
             try:

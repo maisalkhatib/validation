@@ -74,6 +74,7 @@ class ValidationServiceApp:
         self.rabbitmq_client.register_handler("inventory_refill", self.handle_refill_inventory)
         self.rabbitmq_client.register_handler("category_summary", self.handle_category_summary)
         self.rabbitmq_client.register_handler("stock_level", self.handle_inventory_stock_level)
+        self.rabbitmq_client.register_handler("category_count", self.handle_category_count)
         
         # Computer vision handlers (placeholders)
         self.rabbitmq_client.register_handler("check_cup_picked", self.handle_check_cup_picked)
@@ -121,8 +122,22 @@ class ValidationServiceApp:
             # Call your existing business logic
             result = self.main_validation.process_update_inventory_request(request_data)
             
-            # Send live inventory update to API Bridge after any inventory change
-            await self.send_inventory_status_event()
+            # Track affected categories
+            affected_categories = set()
+            
+            # Extract categories from the request
+            for item in data.get("payload", {}).get("ingredients", []):
+                for ingredient, details in item.items():
+                    if ingredient == "espresso":
+                        affected_categories.add("coffee_beans")
+                    elif ingredient == "cup":
+                        affected_categories.add("cups")
+                    else:
+                        affected_categories.add(ingredient)
+            
+            # Send category-specific updates only if successful
+            if result.get("passed"):
+                await self.send_inventory_status_event(affected_categories)
             
             return result
             
@@ -196,12 +211,25 @@ class ValidationServiceApp:
             
             # Convert new format to your existing format
             # request_data = self.convert_to_validation_format(data, "refill_ingredient")
+            # Track affected categories
+            affected_categories = set()
+            
+            # Extract category from request
+            ingredient_type = data.get("payload", {}).get("ingredient_type")
+            subtype = data.get("payload", {}).get("subtype")
+            
+            if ingredient_type:
+                affected_categories.add(ingredient_type)
+            else:
+                # If no specific type, all categories are affected
+                affected_categories = {"coffee_beans", "cups", "milk", "syrup"}
             
             # Call your existing business logic
             result = self.main_validation.process_refill_ingredient_request(data)
             
-            # Send live inventory update to API Bridge after refill
-            await self.send_inventory_status_event()
+            # Send category-specific updates only if successful
+            if result.get("passed"):
+                await self.send_inventory_status_event(affected_categories)
             
             return result
             
@@ -254,6 +282,29 @@ class ValidationServiceApp:
                 "passed": False,
                 "error": f"Stock level failed: {str(e)}"
             }
+    
+    async def handle_category_count(self, data: Dict[Any, Any]) -> Dict[Any, Any]:
+        """Handle category count requests"""
+        try:
+            request_data = {
+                "request_id": data.get("request_id", f"async-{datetime.now().timestamp()}"),
+                "client_type": "api_bridge",
+                "function_name": "category_count",
+                "payload": {}
+            }
+            print(f"Category count request: {request_data}")
+            result = self.main_validation.process_category_count_request(request_data)
+            print(f"Category count result: {result}")
+            return result
+        
+        except Exception as e:
+            self.logger.error(f"Error in category_count: {e}")
+            return {
+                "request_id": data.get("request_id"),
+                "passed": False,
+                "error": f"Category count failed: {str(e)}"
+            }
+
 
     # =============================================================================
     # COMPUTER VISION HANDLERS (Placeholders)
@@ -334,6 +385,65 @@ class ValidationServiceApp:
     # =============================================================================
     # UTILITY METHODS
     # =============================================================================
+    async def send_inventory_status_event(self, affected_categories: set):
+        """Send live inventory status update for affected categories only"""
+        try:
+            for category in affected_categories:
+                # Get status for this category only
+                status_request = {
+                    "request_id": f"auto-update-{datetime.now().timestamp()}",
+                    "client_type": "api_bridge",
+                    "function_name": "ingredient_status",
+                    "payload": {
+                        "ingredient_type": category
+                    }
+                }
+                
+                category_status = self.main_validation.process_ingredient_status_request(status_request)
+                
+                # Send category-specific event
+                await self.rabbitmq_client.send_event("validation.inventory_updated", {
+                    "category": category,
+                    "inventory": category_status.get("details", {}).get(category, {}),
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+                self.logger.info(f"Sent inventory update for category: {category}")
+            
+            # Also send summary updates
+            await self.send_summary_events()
+            
+        except Exception as e:
+            self.logger.error(f"Error sending inventory status to API Bridge: {e}")
+
+    async def send_summary_events(self):
+        """Send stock level and category summary events"""
+        try:
+            # Stock level summary
+            stock_request = {
+                "request_id": f"stock-update-{datetime.now().timestamp()}",
+                "client_type": "api_bridge",
+                "function_name": "stock_level",
+                "payload": {}
+            }
+            stock_stats = self.main_validation.process_stock_level_request(stock_request)
+            await self.rabbitmq_client.send_event("validation.stock_level_updated", 
+                stock_stats.get("details", {}))
+            
+            # Category summary
+            summary_request = {
+                "request_id": f"summary-update-{datetime.now().timestamp()}",
+                "client_type": "api_bridge", 
+                "function_name": "category_summary",
+                "payload": {}
+            }
+            category_summary = self.main_validation.process_category_summary_request(summary_request)
+            await self.rabbitmq_client.send_event("validation.category_summary_updated", 
+                category_summary.get("details", {}))
+                
+        except Exception as e:
+            self.logger.error(f"Error sending summary events: {e}")
+
     
     def convert_to_validation_format(self, new_data: Dict[Any, Any], function_name: str) -> Dict[Any, Any]:
         # Check if data is nested (from RabbitMQClient wrapper)
@@ -362,29 +472,29 @@ class ValidationServiceApp:
         else:
             return "api_bridge"  # Default to api_bridge
     
-    async def send_inventory_status_event(self):
-        """Send live inventory status update to API Bridge after any inventory change"""
-        try:
-            # Get current full inventory status
-            status_request = {
-                "request_id": f"auto-update-{datetime.now().timestamp()}",
-                "client_type": "api_bridge",
-                "function_name": "ingredient_status",
-                "payload": {}
-            }
+    # async def send_inventory_status_event(self):
+    #     """Send live inventory status update to API Bridge after any inventory change"""
+    #     try:
+    #         # Get current full inventory status
+    #         status_request = {
+    #             "request_id": f"auto-update-{datetime.now().timestamp()}",
+    #             "client_type": "api_bridge",
+    #             "function_name": "ingredient_status",
+    #             "payload": {}
+    #         }
             
-            current_status = self.main_validation.process_ingredient_status_request(status_request)
+    #         current_status = self.main_validation.process_ingredient_status_request(status_request)
             
-            # Send as event for live updates that API Bridge can subscribe to
-            await self.rabbitmq_client.send_event("validation.status_updated", {
-                "current_status": current_status,
-                "timestamp": datetime.now().isoformat()
-            })
+    #         # Send as event for live updates that API Bridge can subscribe to
+    #         await self.rabbitmq_client.send_event("validation.status_updated", {
+    #             "current_status": current_status,
+    #             "timestamp": datetime.now().isoformat()
+    #         })
             
-            self.logger.info("Sent live inventory status update to API Bridge")
+    #         self.logger.info("Sent live inventory status update to API Bridge")
             
-        except Exception as e:
-            self.logger.error(f"Error sending inventory status to API Bridge: {e}")
+    #     except Exception as e:
+    #         self.logger.error(f"Error sending inventory status to API Bridge: {e}")
     
     async def stop(self):
         """Gracefully stop the validation service"""

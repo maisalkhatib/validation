@@ -80,23 +80,7 @@ async def startup_event():
             "oms.*", "scheduler.*", "validation.*", "automation.*", "routine.*"
         ])
         
-        # Register event handlers for all order-related events
-        # OMS Events
-        event_listener.register_event_handler("oms.order_created", handle_order_event)
-        event_listener.register_event_handler("oms.order_started", handle_order_event)
-        event_listener.register_event_handler("oms.order_status_updated", handle_order_event)
-        event_listener.register_event_handler("oms.order_halted", handle_order_event)
-        event_listener.register_event_handler("oms.order_resumed", handle_order_event)
-        event_listener.register_event_handler("oms.order_completed", handle_order_event)
-        event_listener.register_event_handler("oms.order_failed", handle_order_event)
-        event_listener.register_event_handler("oms.order_deleted", handle_order_event)
-        
-        # Scheduler Events
-        event_listener.register_event_handler("scheduler.order_received", handle_order_event)
-        event_listener.register_event_handler("scheduler.order_processing_started", handle_order_event)
-        event_listener.register_event_handler("scheduler.order_completed", handle_order_event)
-        event_listener.register_event_handler("scheduler.order_failed", handle_order_event)
-        event_listener.register_event_handler("scheduler.order_error", handle_order_event)
+
         
         # Inventory Events
         event_listener.register_event_handler("validation.inventory_updated", handle_inventory_updated_event)
@@ -104,20 +88,6 @@ async def startup_event():
         event_listener.register_event_handler("validation.category_summary_updated", handle_category_summary_event)
         # event_listener.register_event_handler("validation.threshold_warning", handle_inventory_event)
         # event_listener.register_event_handler("inventory.refilled", handle_inventory_event)
-        # Create wrapper functions that properly handle async context
-        # def inventory_updated_wrapper(data):
-        #     asyncio.create_task(handle_inventory_updated_event(data))
-            
-        # def stock_level_wrapper(data):
-        #     asyncio.create_task(handle_stock_level_event(data))
-            
-        # def category_summary_wrapper(data):
-        #     asyncio.create_task(handle_category_summary_event(data))
-        
-        # # Register the wrapper functions instead of async functions directly
-        # event_listener.register_event_handler("validation.inventory_updated", inventory_updated_wrapper)
-        # event_listener.register_event_handler("validation.stock_level_updated", stock_level_wrapper)
-        # event_listener.register_event_handler("validation.category_summary_updated", category_summary_wrapper)
         
         logger.info("API Bridge service started successfully")
         
@@ -137,46 +107,8 @@ async def shutdown_event():
     
     logger.info("API Bridge service stopped")
 
-# Event handlers for real-time updates
-async def handle_order_event(data: Dict):
-    """Handle order-related events and broadcast to WebSocket clients"""
-    logger.info(f"📡 Broadcasting order event to {len(active_websockets)} WebSocket clients: {data}")
-    
-    print(f"Order data: {data}")
-    
-    await broadcast_to_websockets({
-        "type": "order_update",
-        "event": data.get("event_type", "unknown"),
-        "data": data,
-        "timestamp": datetime.now().isoformat()
-    })
-
-async def handle_inventory_event(data: Dict):
-    """Handle inventory-related events and broadcast to WebSocket clients"""
-    # logger.info(f"📡 Broadcasting inventory event to {len(active_websockets)} WebSocket clients: {json.dumps(data, indent=2)}")
-    
-    inventory_data = data.get("data", {})
-    print("--------------------------------")
-    print(f"Inventory data in handle_inventory_event: {inventory_data}")
-    print("--------------------------------")
-    
-
-    message = {
-        "type": "inventory_update",
-        "event": data.get("event_type", "unknown"),
-        "data": data,
-        "timestamp": datetime.now().isoformat()
-    }
-    
-    print(f"message to websocket: {json.dumps(message, indent=2)}")
 
 
-    await broadcast_to_websockets({
-        "type": "inventory_update",
-        "event": data.get("event_type", "unknown"),
-        "data": data,
-        "timestamp": datetime.now().isoformat()
-    })
 
 ############################################
 
@@ -190,7 +122,7 @@ async def handle_inventory_updated_event(data: Dict):
     
     # Broadcast with specific event type
     await ws_manager.broadcast_event(
-        event_type=f"inventory.update.{category}",
+        event_type=f"inventory.category.update.{category}",
         event_data={
             "category": category,
             "inventory": {category: inventory_data},
@@ -335,218 +267,6 @@ async def root_health_check():
         "timestamp": datetime.now().isoformat()
     }
 
-# Order Management Endpoints
-@app.post("/api/orders")
-async def create_order(order: OrderCreate):
-    """Create a new order"""
-    try:
-        response = await rabbitmq_client.send_request(
-            target_service="oms",
-            action="create_order",
-            data={"order": order.dict()},
-            timeout=30
-        )
-        
-        if response.get("success"):
-            return response
-        else:
-            raise HTTPException(status_code=400, detail=response.get("error", "Failed to create order"))
-            
-    except Exception as e:
-        logger.error(f"Error creating order: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/orders")
-async def list_orders(status: Optional[str] = None):
-    """List orders with optional status filter"""
-    try:
-        response = await rabbitmq_client.send_request(
-            target_service="oms",
-            action="list_orders",
-            data={"status": status} if status else {},
-            timeout=30
-        )
-        
-        if response.get("success"):
-            return response
-        else:
-            raise HTTPException(status_code=400, detail=response.get("error", "Failed to list orders"))
-            
-    except Exception as e:
-        logger.error(f"Error listing orders: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/orders/{order_id}")
-async def get_order(order_id: int):
-    """Get a specific order by ID"""
-    try:
-        response = await rabbitmq_client.send_request(
-            target_service="oms",
-            action="get_order",
-            data={"order_id": order_id},
-            timeout=30
-        )
-        
-        if response.get("success"):
-            return response
-        else:
-            raise HTTPException(status_code=404, detail=response.get("error", "Order not found"))
-            
-    except Exception as e:
-        logger.error(f"Error getting order {order_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.patch("/api/orders/{order_id}/start")
-async def start_order(order_id: int):
-    """Start processing an order"""
-    try:
-        logger.info(f"🚀 Starting order {order_id} - sending RabbitMQ request to OMS")
-        
-        response = await rabbitmq_client.send_request(
-            target_service="oms",
-            action="start_order",
-            data={"order_id": order_id},
-            timeout=30
-        )
-        
-        logger.info(f"📨 Received response from OMS for order {order_id}: {response}")
-        
-        if response.get("success"):
-            logger.info(f"✅ Order {order_id} started successfully")
-            return response
-        else:
-            logger.error(f"❌ Order {order_id} start failed: {response.get('error')}")
-            raise HTTPException(status_code=400, detail=response.get("error", "Failed to start order"))
-            
-    except Exception as e:
-        logger.error(f"💥 Exception starting order {order_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.patch("/api/orders/{order_id}/status")
-async def update_order_status(order_id: int, update: OrderUpdate):
-    """Update order status"""
-    try:
-        response = await rabbitmq_client.send_request(
-            target_service="oms",
-            action="update_order_status",
-            data={
-                "order_id": order_id,
-                "status": update.status,
-                "reason": update.reason
-            },
-            timeout=30
-        )
-        
-        if response.get("success"):
-            return response
-        else:
-            raise HTTPException(status_code=400, detail=response.get("error", "Failed to update order"))
-            
-    except Exception as e:
-        logger.error(f"Error updating order {order_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/api/orders/{order_id}")
-async def delete_order(order_id: int):
-    """Delete an order"""
-    try:
-        response = await rabbitmq_client.send_request(
-            target_service="oms",
-            action="delete_order",
-            data={"order_id": order_id},
-            timeout=30
-        )
-        
-        if response.get("success"):
-            return response
-        else:
-            raise HTTPException(status_code=400, detail=response.get("error", "Failed to delete order"))
-            
-    except Exception as e:
-        logger.error(f"Error deleting order {order_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/orders/{order_id}/halt")
-async def halt_order(order_id: int, reason: str = None):
-    """Halt an order with reason"""
-    try:
-        response = await rabbitmq_client.send_request(
-            target_service="oms",
-            action="halt_order",
-            data={"order_id": order_id, "reason": reason},
-            timeout=30
-        )
-        
-        if response.get("success"):
-            return response
-        else:
-            raise HTTPException(status_code=400, detail=response.get("error", "Failed to halt order"))
-            
-    except Exception as e:
-        logger.error(f"Error halting order {order_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/orders/{order_id}/resume")
-async def resume_order(order_id: int):
-    """Resume a halted order"""
-    try:
-        response = await rabbitmq_client.send_request(
-            target_service="oms",
-            action="resume_order",
-            data={"order_id": order_id},
-            timeout=30
-        )
-        
-        if response.get("success"):
-            return response
-        else:
-            raise HTTPException(status_code=400, detail=response.get("error", "Failed to resume order"))
-            
-    except Exception as e:
-        logger.error(f"Error resuming order {order_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Queue Management Endpoints
-@app.get("/api/queue")
-async def get_queue():
-    """Get current order queue"""
-    try:
-        response = await rabbitmq_client.send_request(
-            target_service="oms",
-            action="sync_queue",
-            data={},
-            timeout=30
-        )
-        
-        if response.get("success"):
-            return response
-        else:
-            raise HTTPException(status_code=400, detail=response.get("error", "Failed to get queue"))
-            
-    except Exception as e:
-        logger.error(f"Error getting queue: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/api/queue/reorder")
-async def reorder_queue(order_data: dict):
-    """Reorder the queue"""
-    try:
-        response = await rabbitmq_client.send_request(
-            target_service="oms",
-            action="bulk_reorder_queue",
-            data=order_data,
-            timeout=30
-        )
-        
-        if response.get("success"):
-            return response
-        else:
-            raise HTTPException(status_code=400, detail=response.get("error", "Failed to reorder queue"))
-            
-    except Exception as e:
-        logger.error(f"Error reordering queue: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 # System Status Endpoints
 @app.get("/api/system/status")
 async def get_system_status():
@@ -618,44 +338,6 @@ async def resume_system():
     except Exception as e:
         logger.error(f"Error resuming system: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-# Recipe Management Endpoints
-@app.get("/api/recipes")
-async def get_recipes():
-    """Get available recipes from recipes.json file"""
-    try:
-        recipes_file = os.path.join('/app', 'data', 'recipes.json')
-        
-        if not os.path.exists(recipes_file):
-            logger.error(f"Recipes file not found at {recipes_file}")
-            raise HTTPException(status_code=500, detail="Recipes file not found")
-        
-        with open(recipes_file, 'r', encoding='utf-8') as f:
-            recipes_data = json.load(f)
-        
-        # Extract recipe names and convert to title case for display
-        recipe_names = []
-        for recipe_name in recipes_data.keys():
-            # Convert from lowercase to title case (e.g., "latte" -> "Latte")
-            display_name = recipe_name.replace('_', ' ').title()
-            recipe_names.append({
-                "name": recipe_name,
-                "display_name": display_name,
-                "steps": len(recipes_data[recipe_name])
-            })
-        
-        logger.info(f"Successfully loaded {len(recipe_names)} recipes from file")
-        return {
-            "success": True,
-            "data": recipe_names,  # Use 'data' field for consistency with dashboard API client
-            "message": f"Successfully loaded {len(recipe_names)} recipes",
-            "count": len(recipe_names),
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Error loading recipes: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to load recipes: {str(e)}")
 
 # Inventory Management Endpoints
 @app.get("/api/inventory/status")

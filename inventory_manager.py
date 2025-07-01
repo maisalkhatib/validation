@@ -176,56 +176,46 @@ class InventoryManager:
     def refill_inventory(self, ingredient_type: str = None, subtype: str = None) -> bool:
         """Refill inventory to maximum capacity"""
         try:
-            # Determine what to refill
+            success = False
             if ingredient_type is None and subtype is None:
-                ingredient_types = list(self.inventory_cache.keys())
+                ingredient_types = self.inventory_cache.keys()
+            
             elif ingredient_type is not None and subtype is None:
                 if ingredient_type not in self.inventory_cache:
                     self.logger.error(f"Invalid ingredient type: {ingredient_type}")
                     return False
                 ingredient_types = [ingredient_type]
+
             elif ingredient_type is not None and subtype is not None:
                 if ingredient_type not in self.inventory_cache or subtype not in self.inventory_cache[ingredient_type]:
                     self.logger.error(f"Invalid ingredient type or subtype: {ingredient_type}:{subtype}")
                     return False
                 ingredient_types = [ingredient_type]
+
             else:
                 self.logger.error(f"Invalid input: {ingredient_type}:{subtype}")
                 return False
-            
-            # Track overall success
-            overall_success = True
-            
-            for ing_type in ingredient_types:
-                # Determine subtypes to process
-                if subtype is not None:
-                    subtypes_to_process = [subtype]
-                else:
-                    subtypes_to_process = list(self.inventory_cache[ing_type].keys())
-                
-                for sub in subtypes_to_process:
+        
+            for ingredient_type in ingredient_types:
+                for subtype in self.inventory_cache[ingredient_type].keys():
                     # Get max capacity
-                    max_capacity = self.inventory_cache.get(ing_type, {}).get(sub, {}).get("max_capacity")
-                    
+                    max_capacity = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("max_capacity")
+
                     if not max_capacity:
-                        self.logger.error(f"No max capacity found for {ing_type}:{sub}")
-                        overall_success = False
-                        continue
+                        self.logger.error(f"No max capacity found for {ingredient_type}:{subtype}")
+                        return False
                     
                     # Update database
-                    success = self.db_client.update_inventory(ing_type, sub, max_capacity)
+                    success = self.db_client.update_inventory(ingredient_type, subtype, max_capacity)
                     
                     if success:
                         # Update cache
-                        if ing_type in self.inventory_cache and sub in self.inventory_cache[ing_type]:
-                            self.inventory_cache[ing_type][sub]["current_amount"] = max_capacity
-                        self.logger.info(f"Refilled {ing_type}:{sub} to max capacity: {max_capacity}")
-                    else:
-                        overall_success = False
-                        self.logger.error(f"Failed to refill {ing_type}:{sub}")
-            
-            return overall_success
-            
+                        if ingredient_type in self.inventory_cache and subtype in self.inventory_cache[ingredient_type]:
+                            self.inventory_cache[ingredient_type][subtype]["current_amount"] = max_capacity
+
+                        self.logger.info(f"Refilled {ingredient_type}:{subtype} to max capacity: {max_capacity}")
+            return success
+        
         except Exception as e:
             self.logger.error(f"Error refilling inventory: {e}")
             return False
@@ -254,6 +244,7 @@ class InventoryManager:
         else:
             return {}
         
+        print(f"ingredient_types_to_process: {ingredient_types_to_process}")
         # Process ingredient_types
         for ing_type in ingredient_types_to_process:
             result[ing_type] = {}
@@ -274,7 +265,7 @@ class InventoryManager:
                     critical_threshold = data["critical_threshold"]
                     
                     # Calculate percentage
-                    percentage = int(((current_amount - critical_threshold) / max_capacity) * 100) if max_capacity > 0 else 0
+                    percentage = int(((current_amount ) / max_capacity) * 100) if max_capacity > 0 else 0
                     
                     # Get status using percentage-based rules
                     if percentage >= 66:
@@ -295,6 +286,7 @@ class InventoryManager:
         
         return result
     
+
     def get_category_summary(self) -> dict:
         """
         Get lowest inventory level per category
@@ -312,13 +304,17 @@ class InventoryManager:
                 max_capacity = data["max_capacity"]
                 critical_threshold = data["critical_threshold"]
                 
-                # Calculate percentage (same formula as get_inventory_status)
-                percentage = int(((current_amount - critical_threshold) / max_capacity) * 100) if max_capacity > 0 else 0
+                # Calculate percentage
+                percentage = int((current_amount / max_capacity) * 100) if max_capacity > 0 else 0
                 
-                if percentage < lowest_percentage:
+                # Use <= instead of < to ensure at least one item is selected
+                if percentage <= lowest_percentage:
                     lowest_percentage = percentage
                     lowest_subtype = subtype
                     lowest_data = data
+            
+            # Initialize the category dict regardless
+            category_summary[ingredient_type] = {}
             
             if lowest_data:
                 # Determine status
@@ -338,8 +334,22 @@ class InventoryManager:
                     "status": status,
                     "last_updated": lowest_data.get("last_updated", datetime.now().isoformat())
                 }
+            
+            # This now works because category_summary[ingredient_type] exists
             category_summary[ingredient_type]["items_count"] = len(subtypes)
+        
         return category_summary
+    
+    def get_category_count(self) -> dict:
+        """
+        Get count of items in each category
+        """
+        category_count = {}
+        for ingredient_type, subtypes in self.inventory_cache.items():
+            category_count[ingredient_type] = len(subtypes)
+        
+        print(f"Category count: {category_count}")
+        return category_count
     
     def get_inventory_stock_level_stats(self) -> dict:
         """
@@ -361,7 +371,7 @@ class InventoryManager:
                 critical_threshold = data["critical_threshold"]
                 
                 # Calculate percentage
-                percentage = int(((current_amount - critical_threshold) / max_capacity) * 100) if max_capacity > 0 else 0
+                percentage = int(((current_amount ) / max_capacity) * 100) if max_capacity > 0 else 0
                 
                 # Determine status and increment counters
                 if percentage >= 66:
@@ -409,12 +419,15 @@ if __name__ == "__main__":
 
     # print("--------------------------------")
 
-    # inventory_category_summary = inventory_manager.get_category_summary()
-    # print(f"Inventory category summary: {json.dumps(inventory_category_summary, indent=2)}")
+    inventory_category_summary = inventory_manager.get_category_summary()
+    print("###################################")
+    print(f"Inventory category summary: {json.dumps(inventory_category_summary, indent=2)}")
 
-    inventory_stock_level_stats = inventory_manager.get_inventory_stock_level_stats()
-    print(f"Inventory stock level stats: {json.dumps(inventory_stock_level_stats, indent=2)}")
+    # inventory_stock_level_stats = inventory_manager.get_inventory_stock_level_stats()
+    # print(f"Inventory stock level stats: {json.dumps(inventory_stock_level_stats, indent=2)}")
 
+    # inventory_category_count = inventory_manager.get_category_count()
+    # print(f"Inventory category count: {json.dumps(inventory_category_count, indent=2)}")
 
 
 """   

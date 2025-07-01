@@ -4,6 +4,7 @@ from fastapi import HTTPException
 import logging
 import threading
 from queue import Queue
+import json
 
 from inventory_manager import InventoryManager
 from pydantic_req_structure import InventoryStatusRequest, ClientType
@@ -385,6 +386,7 @@ class MainValidation:
         try:
             # Extract parameters from payload
             ingredient_type = payload.get("payload", {}).get("ingredient_type", None)
+            print(json.dumps(payload, indent=2))
             subtype = payload.get("payload", {}).get("subtype", None)
             print("###################################")
             print(ingredient_type, subtype)
@@ -395,7 +397,7 @@ class MainValidation:
                 ingredient_type=ingredient_type,
                 subtype=subtype
             )
-            print(inventory_status)
+            print(f"inventory_status: {json.dumps(inventory_status, indent=2)}")
             
             final_result = {
                 "passed": True,
@@ -424,6 +426,9 @@ class MainValidation:
     def process_category_summary_request(self, payload):
         """Process category summary request"""
         try:
+            print("###################################")
+            print("process_category_summary_request")
+            print(f"payload: {json.dumps(payload, indent=2)}")
             category_summary = self._inventory_client.get_category_summary()
             
             final_result = {
@@ -432,6 +437,7 @@ class MainValidation:
                 "client_type": payload["client_type"],
                 "details": category_summary
             }
+            print(f"final_result: {json.dumps(final_result, indent=2)}")
             
             self._response_queue.put(final_result)
             self._response_event.set()
@@ -448,6 +454,35 @@ class MainValidation:
             self._response_queue.put(error_result)
             self._response_event.set()
             return error_result
+
+    def process_category_count_request(self, payload):
+        """Process category count request"""
+        try:
+            category_count = self._inventory_client.get_category_count()
+            
+            final_result = {
+                "passed": True,
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "details": category_count
+            }
+            
+            self._response_queue.put(final_result)
+            self._response_event.set()
+            return final_result
+        
+        except Exception as e:
+            logging.error(f"Error processing category count request: {e}")
+            error_result = {
+                "passed": False,
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "details": {"error": f"Error processing request: {str(e)}"}
+            }
+            self._response_queue.put(error_result)
+            self._response_event.set()
+            return error_result
+        
 
     def process_stock_level_request(self, payload):
         """Process inventory stock level statistics request"""

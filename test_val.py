@@ -286,12 +286,29 @@ async def test_update_inventory():
             action="update_inventory",
             data={
                 "ingredients": [
-                    {"cup": {"type": "H9", "amount": 1}}
+                    {"espresso": {"type": "regular", "amount": 2}},
+                    {"cup": {"type": "H9", "amount": 1}},
+                    {"milk": {"type": "whole", "amount": 150}},
+                    # {"espresso": {"type": "decaf", "amount": 1}},
+                    # {"espresso": {"type": "regular", "amount": 1}},
                 ]
             }
         )   
         
         print(f"Update Result: {update_response.get('passed')}")
+
+        # update_response2 = await client.send_request(
+        #     target_service="validation",
+        #     action="update_inventory",
+        #     data={
+        #         "ingredients": [
+        #             {"espresso": {"type": "regular", "amount": 2}},
+        #             {"cup": {"type": "H7", "amount": 1}}
+        #         ]
+        #     }
+        # )
+        
+        # print(f"Update Result: {update_response2.get('passed')}")
         
     except Exception as e:
         print(f"❌ Update inventory test failed: {e}")

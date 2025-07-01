@@ -9,7 +9,7 @@ async def test_api_bridge():
             print(f"Health: {await resp.json()}")
         
         # Test inventory status
-        async with session.post('http://localhost:8000/api/inventory/refill') as resp:
+        async with session.get('http://localhost:8000/api/inventory/category-summary') as resp:
             print(f"Inventory: {json.dumps(await resp.json(), indent=2)}")
         
         # Test refill

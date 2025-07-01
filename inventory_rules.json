@@ -10,7 +10,7 @@
         "subtypes": {
             "H7": {"max_capacity": 300, "warning_threshold": 50, "critical_threshold": 25},
             "H9": {"max_capacity": 300, "warning_threshold": 50, "critical_threshold": 25},
-            "H12": {"max_capacity": 250, "warning_threshold": 40, "critical_threshold": 20},
+            "H12": {"max_capacity": 300, "warning_threshold": 40, "critical_threshold": 20},
             "C7": {"max_capacity": 300, "warning_threshold": 50, "critical_threshold": 25},
             "C9": {"max_capacity": 300, "warning_threshold": 50, "critical_threshold": 25},
             "C12": {"max_capacity": 200, "warning_threshold": 30, "critical_threshold": 15},

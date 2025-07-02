@@ -20,8 +20,8 @@
     "milk": {
         "subtypes": {
             "whole": {"max_capacity": 15000, "warning_threshold": 2000, "critical_threshold": 1000},
-            "skim": {"max_capacity": 10000, "warning_threshold": 1500, "critical_threshold": 750},
-            "oat": {"max_capacity": 8000, "warning_threshold": 1000, "critical_threshold": 500},
+            "low": {"max_capacity": 10000, "warning_threshold": 1500, "critical_threshold": 750},
+            "lactose_free": {"max_capacity": 8000, "warning_threshold": 1000, "critical_threshold": 500},
             "soy": {"max_capacity": 8000, "warning_threshold": 1000, "critical_threshold": 500}
         }
     },

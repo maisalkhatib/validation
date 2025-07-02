@@ -9,13 +9,14 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Set
 import uuid
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
+import socketio
 
 from websocket_manager import WebSocketManager
 
@@ -28,7 +29,16 @@ from shared.rabbitmq_client import RabbitMQClient, EventListener
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Create Socket.IO server
+sio = socketio.AsyncServer(
+    cors_allowed_origins="*",
+    async_mode='asgi',
+    logger=False,
+    engineio_logger=False
+)
+
 app = FastAPI(title="BARNS API Bridge Service")
+
 
 # Add CORS middleware
 app.add_middleware(
@@ -40,7 +50,7 @@ app.add_middleware(
 )
 
 # Global instance
-ws_manager = WebSocketManager()
+# ws_manager = WebSocketManager()
 
 # Global RabbitMQ clients
 rabbitmq_client: Optional[RabbitMQClient] = None
@@ -48,6 +58,34 @@ event_listener: Optional[EventListener] = None
 
 # WebSocket connections for real-time updates
 active_websockets = []
+
+
+# Track client subscriptions for Socket.IO
+client_subscriptions: Dict[str, Set[str]] = {}
+
+# Statistics
+stats = {
+    "total_connections": 0,
+    "active_connections": 0,
+    "total_events_sent": 0,
+    "events_by_topic": {}
+}
+
+# Valid topics
+VALID_TOPICS = {
+    # Inventory topics
+    "inventory.update.milk",
+    "inventory.update.coffee_beans",
+    "inventory.update.cups", 
+    "inventory.update.syrup",
+    "inventory.update.*",  # All inventory updates
+    "inventory.stock_level",
+    "inventory.summary",
+    # Alert topics (for future)
+    "alerts.new",
+    "alerts.acknowledged",
+    "alerts.*"
+}
 
 # Request/Response models
 class OrderCreate(BaseModel):
@@ -180,24 +218,24 @@ async def handle_inventory_event(data: Dict):
 
 ############################################
 
-# Update your event handlers to use the new system
-async def handle_inventory_updated_event(data: Dict):
-    """Handle category-specific inventory update events"""
-    category = data.get("category")
-    inventory_data = data.get("inventory", {})
+# # Update your event handlers to use the new system
+# async def handle_inventory_updated_event(data: Dict):
+#     """Handle category-specific inventory update events"""
+#     category = data.get("category")
+#     inventory_data = data.get("inventory", {})
     
-    print(f"Inventory data in handle_inventory_updated_event: {inventory_data}")
+#     print(f"Inventory data in handle_inventory_updated_event: {inventory_data}")
     
-    # Broadcast with specific event type
-    await ws_manager.broadcast_event(
-        event_type=f"inventory.update.{category}",
-        event_data={
-            "category": category,
-            "inventory": {category: inventory_data},
-            "timestamp": data.get("timestamp", datetime.now().isoformat())
-        },
-        source="validation"
-    )
+#     # Broadcast with specific event type
+#     await ws_manager.broadcast_event(
+#         event_type=f"inventory.update.{category}",
+#         event_data={
+#             "category": category,
+#             "inventory": {category: inventory_data},
+#             "timestamp": data.get("timestamp", datetime.now().isoformat())
+#         },
+#         source="validation"
+#     )
     
     # # Also broadcast to general inventory update topic
     # await ws_manager.broadcast_event(
@@ -210,36 +248,36 @@ async def handle_inventory_updated_event(data: Dict):
     #     source="validation"
     # )
 
-async def handle_stock_level_event(data: Dict):
-    """Handle stock level summary update events"""
+# async def handle_stock_level_event(data: Dict):
+#     """Handle stock level summary update events"""
 
-    print(f"Stock level data in handle_stock_level_event: {data}")
+#     print(f"Stock level data in handle_stock_level_event: {data}")
     
-    await ws_manager.broadcast_event(
-        event_type="inventory.stock_level",
-        event_data=data,
-        source="validation"
-    )
+#     await ws_manager.broadcast_event(
+#         event_type="inventory.stock_level",
+#         event_data=data,
+#         source="validation"
+#     )
 
-    print(f"Stock level data in handle_stock_level_event: {data}")
+#     print(f"Stock level data in handle_stock_level_event: {data}")
 
-async def handle_category_summary_event(data: Dict):
-    """Handle category summary update events"""
-    await ws_manager.broadcast_event(
-        event_type="inventory.summary",
-        event_data=data,
-        source="validation"
-    )
+# async def handle_category_summary_event(data: Dict):
+#     """Handle category summary update events"""
+#     await ws_manager.broadcast_event(
+#         event_type="inventory.summary",
+#         event_data=data,
+#         source="validation"
+#     )
 
-# Add a monitoring endpoint
-@app.get("/api/websocket/stats")
-async def get_websocket_stats():
-    """Get WebSocket connection statistics"""
-    return {
-        "success": True,
-        "stats": ws_manager.get_stats(),
-        "timestamp": datetime.now().isoformat()
-    }
+# # Add a monitoring endpoint
+# @app.get("/api/websocket/stats")
+# async def get_websocket_stats():
+#     """Get WebSocket connection statistics"""
+#     return {
+#         "success": True,
+#         "stats": ws_manager.get_stats(),
+#         "timestamp": datetime.now().isoformat()
+#     }
 
 
 # ############################################333
@@ -920,6 +958,127 @@ async def acknowledge_alert(alert_id: int):
         logger.error(f"Error acknowledging alert {alert_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+#------------------------------------------------------------------------
+# socket io endpoints
+#------------------------------------------------------------------------
+
+# Helper Functions
+def is_valid_topic(topic: str) -> bool:
+    """Validate topic format"""
+    return topic in VALID_TOPICS or (
+        topic.startswith("inventory.update.") and len(topic.split('.')) == 3
+    )
+
+# Socket.IO Event Handlers - SIMPLIFIED
+@sio.event
+async def connect(sid, environ):
+    """Handle client connection"""
+    stats["total_connections"] += 1
+    stats["active_connections"] += 1
+    
+    logger.info(f"🔌 Socket.IO client connected: {sid}")
+    
+    # Send welcome message
+    await sio.emit('connected', {
+        "status": "connected",
+        "client_id": sid,
+        "message": "Socket.IO connection established",
+        "timestamp": datetime.now().isoformat()
+    }, room=sid)
+
+@sio.event
+async def disconnect(sid):
+    """Handle client disconnection"""
+    stats["active_connections"] -= 1
+    logger.info(f"🔌 Socket.IO client disconnected: {sid}")
+
+@sio.event
+async def ping(sid):
+    """Handle ping for heartbeat"""
+    await sio.emit('pong', {
+        "timestamp": datetime.now().isoformat()
+    }, room=sid)
+
+# Remove subscribe/unsubscribe events completely
+
+# Update emission functions to broadcast to ALL clients
+async def emit_inventory_update(category: str, inventory_data: Dict):
+    """Emit inventory update for specific category"""
+    # Emit with specific event name
+    await sio.emit(f'inventory.update.{category}', {
+        "category": category,
+        "inventory": inventory_data,
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    # Also emit general update
+    await sio.emit('inventory.update', {
+        "category": category,
+        "inventory": inventory_data,
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    logger.info(f"📡 Emitted inventory.update.{category}")
+
+async def emit_stock_level_update(stock_data: Dict):
+    """Emit stock level statistics update"""
+    await sio.emit('inventory.stock_level', {
+        "stock_levels": stock_data,
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    logger.info("📡 Emitted inventory.stock_level")
+
+async def emit_inventory_summary(summary_data: Dict):
+    """Emit inventory category summary update"""
+    await sio.emit('inventory.summary', {
+        "summary": summary_data,
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    logger.info("📡 Emitted inventory.summary")
+
+# Replace your existing event handlers with these:
+async def handle_inventory_updated_event(data: Dict):
+    """Handle category-specific inventory update events"""
+    category = data.get("category")
+    inventory_data = data.get("inventory", {})
+    
+    logger.info(f"📦 Received inventory update for category: {category}")
+    print(f"Inventory data: {json.dumps(inventory_data, indent=2)}")
+    
+    # Emit to Socket.IO clients
+    await emit_inventory_update(category, inventory_data)
+
+async def handle_stock_level_event(data: Dict):
+    """Handle stock level summary update events"""
+    logger.info(f"📊 Received stock level update")
+    print(f"Stock level data: {json.dumps(data, indent=2)}")
+    
+    # Emit to Socket.IO clients
+    await emit_stock_level_update(data)
+
+async def handle_category_summary_event(data: Dict):
+    """Handle category summary update events"""
+    logger.info(f"📋 Received category summary update")
+    print(f"Category summary data: {json.dumps(data, indent=2)}")
+    
+    # Emit to Socket.IO clients
+    await emit_inventory_summary(data)
+
+# Add Socket.IO stats endpoint
+@app.get("/api/socketio/stats")
+async def get_socketio_stats():
+    """Get Socket.IO connection statistics"""
+    return {
+        "success": True,
+        "stats": stats,
+        "active_topics": list(set().union(*client_subscriptions.values())) if client_subscriptions else [],
+        "timestamp": datetime.now().isoformat()
+    }
+
 # WebSocket endpoint for real-time updates
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -974,32 +1133,33 @@ async def websocket_endpoint(websocket: WebSocket):
             active_websockets.remove(websocket)
 
 
-
-@app.websocket("/ws/v2")
-async def websocket_endpoint_v2(websocket: WebSocket):
-    """Scalable WebSocket endpoint"""
-    client = await ws_manager.connect(websocket)
+# @app.websocket("/ws/v2")
+# async def websocket_endpoint_v2(websocket: WebSocket):
+#     """Scalable WebSocket endpoint"""
+#     client = await ws_manager.connect(websocket)
     
-    try:
-        while True:
-            # Receive messages from client
-            data = await websocket.receive_text()
-            try:
-                message = json.loads(data)
-                await ws_manager.handle_client_message(client, message)
-            except json.JSONDecodeError:
-                await websocket.send_text(json.dumps({
-                    "type": "error",
-                    "message": "Invalid JSON",
-                    "timestamp": datetime.now().isoformat()
-                }))
+#     try:
+#         while True:
+#             # Receive messages from client
+#             data = await websocket.receive_text()
+#             try:
+#                 message = json.loads(data)
+#                 await ws_manager.handle_client_message(client, message)
+#             except json.JSONDecodeError:
+#                 await websocket.send_text(json.dumps({
+#                     "type": "error",
+#                     "message": "Invalid JSON",
+#                     "timestamp": datetime.now().isoformat()
+#                 }))
     
-    except WebSocketDisconnect:
-        await ws_manager.disconnect(client)
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        await ws_manager.disconnect(client)
+#     except WebSocketDisconnect:
+#         await ws_manager.disconnect(client)
+#     except Exception as e:
+#         logger.error(f"WebSocket error: {e}")
+#         await ws_manager.disconnect(client)
 
+# Mount Socket.IO app
+socket_app = socketio.ASGIApp(sio, app)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(socket_app, host="0.0.0.0", port=8000) 

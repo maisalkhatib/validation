@@ -18,7 +18,7 @@ class CoffeeBeansDetector:
         # Should update inventory with detected percentage
         return {
             "success": True,
-            "percentage": 100,
+            "percentage": 80,
             "confidence": 0.95,
             "message": "Coffee beans detected successfully"
         }

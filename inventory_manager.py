@@ -150,6 +150,9 @@ class InventoryManager:
             critical_threshold = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("critical_threshold", 0)
 
             new_amount = current_amount + amount
+
+            if new_amount < 0:
+                new_amount = 0
             
             # Update database
             success = self.db_client.update_inventory(ingredient_type, subtype, new_amount)
@@ -178,7 +181,7 @@ class InventoryManager:
         
     def refill_inventory(self, ingredient_type: str = None, subtype: str = None, max_capacity: float = None, skip_coffee_regular: bool = False) -> bool:
         """Refill inventory to maximum capacity"""
-        print(f"inside refill_inventory: ingredient_type: {ingredient_type}, subtype: {subtype}")
+        print(f"&&&inside refill_inventory: ingredient_type: {ingredient_type}, subtype: {subtype}")
         try:
             success = False
             if ingredient_type is None and subtype is None:
@@ -207,7 +210,7 @@ class InventoryManager:
                     if skip_coffee_regular and ingredient_type == "coffee_beans" and subtype_cache == "regular":
                         print(f"Skipping coffee_beans:regular due to skip_coffee_regular flag")
                         continue
-                    
+
                     # Get max capacity
                     if subtype_cache == subtype or subtype is None:
                         if max_capacity is None:
@@ -225,9 +228,9 @@ class InventoryManager:
                         if success:
                             # Update cache
                             if ingredient_type in self.inventory_cache and subtype_cache in self.inventory_cache[ingredient_type]:
-                                self.inventory_cache[ingredient_type][subtype_cache]["current_amount"] = max_capacity
+                                self.inventory_cache[ingredient_type][subtype_cache]["current_amount"] = max_capacity_to_use
 
-                            self.logger.info(f"Refilled {ingredient_type}:{subtype_cache} to max capacity: {max_capacity}")
+                            self.logger.info(f"Refilled {ingredient_type}:{subtype_cache} to max capacity: {max_capacity_to_use}")
             return success
         
         except Exception as e:
@@ -260,6 +263,7 @@ class InventoryManager:
         Returns hierarchical dict with percentage, amount, status, date
         """
         result = {}
+        print(f"^^^inside get_inventory_status: ingredient_type: {ingredient_type}, subtype: {subtype}")
         
         # Determine ingredient_types to process
         if ingredient_type is None:
@@ -288,6 +292,7 @@ class InventoryManager:
                 subtypes_to_process = [subtype]
             else:
                 subtypes_to_process = self.inventory_cache[ing_type].keys()
+            print(f"subtypes_to_process: {subtypes_to_process}")
             
             # Process each subtype
             for sub in subtypes_to_process:
@@ -300,7 +305,6 @@ class InventoryManager:
                     
                     # Calculate percentage
                     percentage = int(((current_amount ) / max_capacity) * 100) if max_capacity > 0 else 0
-                    
                     # Get status using percentage-based rules
                     if percentage >= 66:
                         status = "high"
@@ -470,9 +474,9 @@ class InventoryManager:
 
     # print("--------------------------------")
 
-    inventory_category_summary = inventory_manager.get_category_summary()
-    print("###################################")
-    print(f"Inventory category summary: {json.dumps(inventory_category_summary, indent=2)}")
+    # inventory_category_summary = inventory_manager.get_category_summary()
+    # print("###################################")
+    # print(f"Inventory category summary: {json.dumps(inventory_category_summary, indent=2)}")
 
     # inventory_stock_level_stats = inventory_manager.get_inventory_stock_level_stats()
     # print(f"Inventory stock level stats: {json.dumps(inventory_stock_level_stats, indent=2)}")

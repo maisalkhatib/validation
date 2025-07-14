@@ -300,14 +300,14 @@ async def test_update_inventory():
             action="update_inventory",
             data={
                 "ingredients": [
-                    # {"coffee_beans": {"type": "regular", "amount": 400}},
+                    {"coffee_beans": {"type": "regular", "amount": 1000}},
+                    # {"coffee_beans": {"type": "decaf", "amount": 100}},
                     # {"milk": {"type": "whole_fat", "amount": 150}},
-                    # {"cups": {"type": "H9", "amount": 2}}
-                    {"syrups": {"type": "vanilla", "amount": 150}},
+                    # {"milk": {"type": "low_fat", "amount": 500}},
+                    # {"cups": {"type": "H9", "amount": 2}},
+                    # {"syrups": {"type": "vanilla", "amount": 150}},
                     # {"sauces": {"type": "white_chocolate", "amount": 150}},
                     # {"premixes": {"type": "mocha_frappe", "amount": 150}},
-                    # {"espresso": {"type": "decaf", "amount": 1}},
-                    # {"espresso": {"type": "regular", "amount": 1}},
                 ]
             }
         )   

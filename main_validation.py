@@ -366,52 +366,82 @@ class MainValidation:
             result["request_id"] = payload["request_id"]
             result["client_type"] = payload["client_type"]
 
-            # check if the ingredient is coffee beans regular
-            if (ingredient_type == "coffee_beans" and subtype == "regular") or (ingredient_type == "coffee_beans" and subtype == None) or (ingredient_type ==None and subtype == None):
-                # refill the inventory
+            # Check if we need coffee beans detection for regular coffee
+            needs_coffee_detection = (
+                (ingredient_type == "coffee_beans" and subtype == "regular") or 
+                (ingredient_type == "coffee_beans" and subtype is None) or 
+                (ingredient_type is None and subtype is None)  # Full refill
+            )
+            print(f"needs_coffee_detection: {needs_coffee_detection}")
+
+            coffee_detection_success = True
+            
+            # Handle coffee beans regular detection if needed
+            if needs_coffee_detection:
                 detection_result = self._run_coffee_beans_detection(function_name="inventory_refill")
+                
                 if detection_result["success"] and detection_result.get("updated"):
-                    result["passed"] = True
-                    result["details"]["message"] = f"Coffee beans regular refilled successfully with {detection_result['percentage']}% detected"
-                    result["details"]["percentage"] = detection_result["percentage"]
+                    result["details"]["coffee_beans_message"] = f"Coffee beans regular refilled successfully with {detection_result['percentage']}% detected"
+                    result["details"]["coffee_beans_percentage"] = detection_result["percentage"]
+                    coffee_detection_success = True
                 elif detection_result["success"] and not detection_result.get("updated"):
                     # Detection successful but percentage <= 0
                     result["passed"] = False
                     result["details"]["error"] = detection_result["message"]
                     result["details"]["alert_type"] = detection_result.get("alert_type", "visibility_issue")
+                    coffee_detection_success = False
                 else:
                     # Detection failed - camera issue
                     result["passed"] = False
                     result["details"]["error"] = detection_result["message"]
                     result["details"]["alert_type"] = detection_result.get("alert_type", "camera_reconnect")
+                    coffee_detection_success = False
 
-            else:
-                # refill the inventory
-                is_refilled = self._inventory_client.refill_inventory(
-                ingredient_type=ingredient_type,
-                subtype=subtype)
+            # Handle normal refill for other ingredients (skip coffee regular if detection was used)
+            normal_refill_success = True
             
-            if not is_refilled:
-                result["passed"] = False
-                result["details"]["error"] = "Failed to refill inventory"
-            
+            if coffee_detection_success:  # Only proceed if coffee detection succeeded (or wasn't needed)
+                if ingredient_type == "coffee_beans" and subtype == "regular":
+                    # Coffee beans regular only - already handled by detection, no normal refill needed
+                    pass
+                else:
+                    # All other cases: use normal refill with skip_coffee_regular flag when needed
+                    skip_coffee_regular = needs_coffee_detection  # Skip if we already handled it with detection
+                    
+                    normal_refill_success = self._inventory_client.refill_inventory(
+                        ingredient_type=ingredient_type,
+                        subtype=subtype,
+                        skip_coffee_regular=skip_coffee_regular
+                    )
+                    
+                    if not normal_refill_success:
+                        result["passed"] = False
+                        if "error" not in result["details"]:  # Don't override coffee detection errors
+                            result["details"]["error"] = f"Failed to refill {ingredient_type}:{subtype}"
+                    else:
+                        if "coffee_beans_message" not in result["details"]:
+                            result["details"]["message"] = f"Successfully refilled {ingredient_type}:{subtype}"
+
+            # Final result
+            result["passed"] = coffee_detection_success and normal_refill_success
+
             self.logger.info(f"Refill ingredient request result: {json.dumps(result, indent=2)}")
             self._response_queue.put(result)
             self._response_event.set()
             return result
-        
+            
         except Exception as e:
             logging.error(f"Error processing refill ingredient request: {e}")
             error_result = {
                 "request_id": payload["request_id"],
                 "client_type": payload["client_type"],
                 "passed": False,
-                "details": f"Error processing request: {str(e)}"
+                "details": {"error": f"Error processing request: {str(e)}"}
             }
             self._response_queue.put(error_result)
             self._response_event.set()
             return error_result
-
+        
     def process_ingredient_status_request(self, payload):
         """
         Process ingredient status request with flexible filtering
@@ -419,7 +449,7 @@ class MainValidation:
         try:
             # Extract parameters from payload
             ingredient_type = payload.get("payload", {}).get("ingredient_type", None)
-            print(json.dumps(payload, indent=2))
+            print(f"****ingredient_status_request: {json.dumps(payload, indent=2)}")
             subtype = payload.get("payload", {}).get("subtype", None)
             print("###################################")
             print(ingredient_type, subtype)
@@ -661,27 +691,27 @@ class MainValidation:
             # This is the blocking operation that runs in the thread pool
             cv_result = self._coffee_beans_detector.detect_coffee_beans()
             print(f"cv_result: {cv_result}")
-            # if function_name == "periodic_detection":
-            #     # Case 1: Periodic detection every 10 minutes
-            #     if cv_result.get("percentage", -1) > 0:
-            #         # Update inventory based on detected percentage
-            #         success = self._inventory_client.update_inventory_from_detection(cv_result["percentage"])
-            #         return {
-            #             "success": True,
-            #             "updated": True,
-            #             "percentage": cv_result["percentage"],
-            #             "timestamp": datetime.datetime.now().isoformat(),
-            #             "message": f"Periodic detection successful, inventory updated with {cv_result['percentage']}% detected"
-            #         }
-            #     else:
-            #         # Percentage <= 0, don't update inventory
-            #         return {
-            #             "success": True,
-            #             "updated": False,
-            #             "percentage": cv_result.get("percentage", 0),
-            #             "timestamp": datetime.datetime.now().isoformat(),
-            #             "message": "Periodic detection completed, no inventory update (percentage <= 0)"
-            #         }
+            if function_name == "periodic_detection":
+                # Case 1: Periodic detection every 10 minutes
+                if cv_result.get("percentage", -1) > 0:
+                    # Update inventory based on detected percentage
+                    success = self._inventory_client.update_inventory_from_detection(cv_result["percentage"])
+                    return {
+                        "success": True,
+                        "updated": True,
+                        "percentage": cv_result["percentage"],
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "message": f"Periodic detection successful, inventory updated with {cv_result['percentage']}% detected"
+                    }
+                else:
+                    # Percentage <= 0, don't update inventory
+                    return {
+                        "success": True,
+                        "updated": False,
+                        "percentage": cv_result.get("percentage", 0),
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "message": "Periodic detection completed, no inventory update (percentage <= 0)"
+                    }
                     
             if function_name == "inventory_refill":
                 # Case 4: Refill operation

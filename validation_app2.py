@@ -47,6 +47,9 @@ class ValidationServiceApp:
             
             # Register handlers for all validation actions
             self.register_handlers()
+
+            # START THE PERIODIC COFFEE BEANS DETECTION
+            await self.main_validation.start_periodic_detection()
             
             self.is_running = True
             self.logger.info(f"Validation service started. Listening on service: {self.service_name}")
@@ -75,6 +78,7 @@ class ValidationServiceApp:
         self.rabbitmq_client.register_handler("category_summary", self.handle_category_summary)
         self.rabbitmq_client.register_handler("stock_level", self.handle_inventory_stock_level)
         self.rabbitmq_client.register_handler("category_count", self.handle_category_count)
+        self.rabbitmq_client.register_handler("category_info", self.handle_category_info)
         
         # Computer vision handlers (placeholders)
         self.rabbitmq_client.register_handler("check_cup_picked", self.handle_check_cup_picked)
@@ -138,6 +142,7 @@ class ValidationServiceApp:
             # Send category-specific updates only if successful
             if result.get("passed"):
                 await self.send_inventory_status_event(affected_categories)
+                await self.send_all_inventory_status()
             
             return result
             
@@ -204,6 +209,27 @@ class ValidationServiceApp:
                 "error": f"Ingredient status failed: {str(e)}"
             }
     
+    async def handle_category_info(self, data: Dict[Any, Any]) -> Dict[Any, Any]:
+        """Handle category info requests"""
+        try:
+            request_data = {
+                "request_id": data.get("request_id", f"async-{datetime.now().timestamp()}"),
+                "client_type": "api_bridge",
+                "function_name": "category_info",
+                "payload": {}
+            }
+            result = self.main_validation.process_category_info_request(request_data)
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error in category_info: {e}")
+            return {
+                "request_id": data.get("request_id"),
+                "passed": False,
+                "error": f"Category info failed: {str(e)}"
+            }
+    
+
     async def handle_refill_inventory(self, data: Dict[Any, Any]) -> Dict[Any, Any]:
         """Handle inventory refill requests - refill inventory to maximum levels"""
         try:
@@ -217,6 +243,10 @@ class ValidationServiceApp:
             # Extract category from request
             ingredient_type = data.get("payload", {}).get("ingredient_type")
             subtype = data.get("payload", {}).get("subtype")
+            function_name = data.get("payload", {}).get("function_name")
+            print(f"inside handle_refill_inventory: function_name: {function_name}")
+
+            print(f"inside handle_refill_inventory: ingredient_type: {ingredient_type}, subtype: {subtype}")
             
             if ingredient_type:
                 affected_categories.add(ingredient_type)
@@ -230,6 +260,7 @@ class ValidationServiceApp:
             # Send category-specific updates only if successful
             if result.get("passed"):
                 await self.send_inventory_status_event(affected_categories)
+                await self.send_all_inventory_status()
             
             return result
             
@@ -385,6 +416,27 @@ class ValidationServiceApp:
     # =============================================================================
     # UTILITY METHODS
     # =============================================================================
+
+    async def send_all_inventory_status(self):
+        """Send all inventory status to API Bridge"""
+        try:
+            status_request = {
+                "request_id": f"auto-update-{datetime.now().timestamp()}",
+                "client_type": "api_bridge",
+                "function_name": "ingredient_status",
+                "payload": {}
+            }
+            status_request = self.convert_to_validation_format(status_request, "ingredient_status")
+            status_response = self.main_validation.process_ingredient_status_request(status_request)
+            await self.rabbitmq_client.send_event("validation.all_inventory_updated", 
+                 status_response.get("details", {})
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error sending all inventory status to API Bridge: {e}")
+
+
+
     async def send_inventory_status_event(self, affected_categories: set):
         """Send live inventory status update for affected categories only"""
         try:
@@ -407,6 +459,9 @@ class ValidationServiceApp:
                     "inventory": category_status.get("details", {}).get(category, {}),
                     "timestamp": datetime.now().isoformat()
                 })
+
+                # CHECK FOR ALERTS - NEW CODE
+                await self.check_and_send_alerts(category, category_status)
                 
                 self.logger.info(f"Sent inventory update for category: {category}")
             
@@ -444,7 +499,66 @@ class ValidationServiceApp:
         except Exception as e:
             self.logger.error(f"Error sending summary events: {e}")
 
+
+    async def check_and_send_alerts(self, category: str, category_status: dict):
+        """Check inventory status and send alerts if needed"""
+        try:
+            # Get the inventory details for this category
+            inventory_details = category_status.get("details", {}).get(category, {})
+            print(f"inside check_and_send_alerts: inventory_details: {json.dumps( inventory_details, indent=2)}")
+            
+            # Loop through each subtype in the category
+            for subtype, item_data in inventory_details.items():
+                status = item_data.get("status")  # This is "high", "medium", "low", or "empty"
+                amount = item_data.get("amount", 0)
+                percentage = item_data.get("percentage", 0)
+                
+                # Send alert based on status
+                if status == "empty" or status == "low":
+                    await self.send_alert_to_oms(status, category, subtype)
+                
+                elif status == "high" or status == "medium":
+                    await self.send_resolution_to_oms(status, category, subtype)
+                
+        except Exception as e:
+            self.logger.error(f"Error checking status for alerts: {e}")
     
+
+    async def send_alert_to_oms(self, severity: str, ingredient_type: str, subtype: str):
+        """Send simple alert event to OMS (matching threshold_warning format)"""
+        try:
+            # Create simple alert event like threshold_warning
+            alert_event = {
+                "ingredient": f"{ingredient_type}_{subtype}",
+                "severity": severity  # "low", or "empty"
+            }
+            
+            # Send alert event to OMS using same pattern as threshold warnings
+            await self.rabbitmq_client.send_event("validation.threshold_warning", alert_event)
+            
+            self.logger.info(f"Sent {severity} threshold warning to OMS for {ingredient_type}:{subtype}")
+            
+        except Exception as e:
+            self.logger.error(f"Error sending alert to OMS: {e}")
+
+    async def send_resolution_to_oms(self, severity: str, ingredient_type: str, subtype: str):
+        """Send resolution event to OMS"""
+        try:
+            # Create resolution event
+            resolution_event = {
+                "ingredient": f"{ingredient_type}_{subtype}",
+                "severity": "acknowledged"  # or "normal"
+            }
+            
+            # Send resolution event to OMS
+            await self.rabbitmq_client.send_event("validation.threshold_resolved", resolution_event)
+            
+            self.logger.info(f"Sent {severity} threshold resolution to OMS for {ingredient_type}:{subtype}")
+            
+        except Exception as e:
+            self.logger.error(f"Error sending resolution to OMS: {e}")
+
+
     def convert_to_validation_format(self, new_data: Dict[Any, Any], function_name: str) -> Dict[Any, Any]:
         # Check if data is nested (from RabbitMQClient wrapper)
         actual_data = new_data.get("data", new_data)
@@ -501,6 +615,9 @@ class ValidationServiceApp:
         self.is_running = False
         
         try:
+            # STOP THE PERIODIC DETECTION
+            await self.main_validation.stop_periodic_detection()
+
             if self.rabbitmq_client:
                 await self.rabbitmq_client.disconnect()
             

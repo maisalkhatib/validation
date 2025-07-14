@@ -23,7 +23,9 @@ class InventoryManager:
             "coffee_beans": {},
             "cups": {},
             "milk": {},
-            "syrup": {}
+            "syrups": {},
+            "sauces": {},
+            "premixes": {}
         }
         
         # Load configuration and inventory data
@@ -66,6 +68,7 @@ class InventoryManager:
                         "last_updated": db_data.get("last_updated").isoformat() if db_data.get("last_updated") else datetime.now().isoformat(),
                         "warning_threshold": limits["warning_threshold"],
                         "critical_threshold": limits["critical_threshold"],
+                        "low_threshold": limits.get("low_threshold", limits["critical_threshold"]),
                         "max_capacity": limits["max_capacity"]
                     }
             self.logger.info(f"Loaded inventory data!")
@@ -173,8 +176,9 @@ class InventoryManager:
             self.logger.error(f"Error updating inventory: {e}")
             return False, "no_warning"
         
-    def refill_inventory(self, ingredient_type: str = None, subtype: str = None) -> bool:
+    def refill_inventory(self, ingredient_type: str = None, subtype: str = None, max_capacity: float = None, skip_coffee_regular: bool = False) -> bool:
         """Refill inventory to maximum capacity"""
+        print(f"inside refill_inventory: ingredient_type: {ingredient_type}, subtype: {subtype}")
         try:
             success = False
             if ingredient_type is None and subtype is None:
@@ -191,34 +195,64 @@ class InventoryManager:
                     self.logger.error(f"Invalid ingredient type or subtype: {ingredient_type}:{subtype}")
                     return False
                 ingredient_types = [ingredient_type]
+                print(f"inside refill_inventory: ingredient_types: {ingredient_types}")
 
             else:
                 self.logger.error(f"Invalid input: {ingredient_type}:{subtype}")
                 return False
         
             for ingredient_type in ingredient_types:
-                for subtype in self.inventory_cache[ingredient_type].keys():
+                for subtype_cache in self.inventory_cache[ingredient_type].keys():
+                    # Skip coffee_beans:regular if skip_coffee_regular is True
+                    if skip_coffee_regular and ingredient_type == "coffee_beans" and subtype_cache == "regular":
+                        print(f"Skipping coffee_beans:regular due to skip_coffee_regular flag")
+                        continue
+                    
                     # Get max capacity
-                    max_capacity = self.inventory_cache.get(ingredient_type, {}).get(subtype, {}).get("max_capacity")
+                    if subtype_cache == subtype or subtype is None:
+                        if max_capacity is None:
+                            max_capacity_to_use = self.inventory_cache.get(ingredient_type, {}).get(subtype_cache, {}).get("max_capacity", None)
+                        else:
+                            max_capacity_to_use = max_capacity
 
-                    if not max_capacity:
-                        self.logger.error(f"No max capacity found for {ingredient_type}:{subtype}")
-                        return False
-                    
-                    # Update database
-                    success = self.db_client.update_inventory(ingredient_type, subtype, max_capacity)
-                    
-                    if success:
-                        # Update cache
-                        if ingredient_type in self.inventory_cache and subtype in self.inventory_cache[ingredient_type]:
-                            self.inventory_cache[ingredient_type][subtype]["current_amount"] = max_capacity
+                        if max_capacity_to_use is None:
+                            self.logger.error(f"No max capacity found for {ingredient_type}:{subtype_cache}")
+                            return False
+                        
+                        # Update database
+                        success = self.db_client.update_inventory(ingredient_type, subtype_cache, max_capacity_to_use)
+                        print(f'inside refill_inventory: success: {ingredient_type}, subtype: {subtype_cache}')
+                        if success:
+                            # Update cache
+                            if ingredient_type in self.inventory_cache and subtype_cache in self.inventory_cache[ingredient_type]:
+                                self.inventory_cache[ingredient_type][subtype_cache]["current_amount"] = max_capacity
 
-                        self.logger.info(f"Refilled {ingredient_type}:{subtype} to max capacity: {max_capacity}")
+                            self.logger.info(f"Refilled {ingredient_type}:{subtype_cache} to max capacity: {max_capacity}")
             return success
         
         except Exception as e:
             self.logger.error(f"Error refilling inventory: {e}")
             return False
+
+    def get_inventory_category_info(self) -> dict:
+        """
+        Get inventory category info
+        Returns dict with category info
+        # i want to return category{ subtype:{name, icon, category_name}}
+        """
+        category_info = {}
+        for ingredient_type, subtypes in self.inventory_cache.items():
+            category_info[ingredient_type] = {} 
+            for subtype, data in subtypes.items():
+                category_info[ingredient_type][subtype] = {
+                    "name": subtype,
+                    "icon": f"{ingredient_type}.png",
+                    "category": ingredient_type
+                }
+        
+        print(f"[INVENTORY_MANAGER] category_info: {json.dumps(category_info, indent=2)}")
+        return category_info
+    
 
     def get_inventory_status(self, ingredient_type: str = None, subtype: str = None) -> dict:
         """
@@ -332,7 +366,8 @@ class InventoryManager:
                     "percentage": lowest_percentage,
                     "amount": lowest_data["current_amount"],
                     "status": status,
-                    "last_updated": lowest_data.get("last_updated", datetime.now().isoformat())
+                    "last_updated": lowest_data.get("last_updated", datetime.now().isoformat()),
+                    "image_path": f"{ingredient_type}.png"
                 }
             
             # This now works because category_summary[ingredient_type] exists
@@ -391,14 +426,30 @@ class InventoryManager:
         print(f"Inventory stock level stats: {stats}")
         return stats
 
+    def update_inventory_from_detection(self, cv_percentage: float):  
+        # get the low threshold
+        low_threshold = self.inventory_cache["coffee_beans"]["regular"]["low_threshold"]
+        # get the max capacity
+        max_capacity = self.inventory_cache["coffee_beans"]["regular"]["max_capacity"]
+
+        grams_to_add = ((max_capacity - low_threshold) * (cv_percentage / 100)) + low_threshold
+
+        # update the inventory
+        success = self.db_client.update_inventory("coffee_beans", "regular", grams_to_add)
+        if success:
+            # update the cache
+            self.inventory_cache["coffee_beans"]["regular"]["current_amount"] = grams_to_add
+            return True
+        return False
+            
 
 
-if __name__ == "__main__":
-    # initialize the db client in the main validation: 
-    db_client = DatabaseClient(
-            "dbname=barns_inventory user=postgres password=QSS2030QSS host=localhost port=5432"
-        )
-    inventory_manager = InventoryManager(db_client)
+# if __name__ == "__main__":
+#     # initialize the db client in the main validation: 
+#     db_client = DatabaseClient(
+#             "dbname=barns_inventory user=postgres password=QSS2030QSS host=localhost port=5432"
+#         )
+#     inventory_manager = InventoryManager(db_client)
 
     # inventory_status = inventory_manager.get_inventory_status()
     # print(f"Inventory status: {json.dumps(inventory_status, indent=2)}")

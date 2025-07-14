@@ -8,6 +8,12 @@ from datetime import datetime
 from shared.rabbitmq_client import RabbitMQClient
 import uuid
 
+client = RabbitMQClient("scheduler")
+try:
+    client.connect()
+except Exception as e:
+    print(f"❌ Connection failed: {e}")
+
 async def test_validation_service():
     """Test all validation service actions"""
     
@@ -271,6 +277,11 @@ async def test_cup_pick_validation():
     finally:
         await client.disconnect()
 
+async def update_inventory_handler(data):
+    """Handle update inventory requests"""
+    print(f"Alert Received: {json.dumps(data, indent=2)}")
+
+
 async def test_update_inventory():
     """Test update inventory"""
     client = RabbitMQClient("scheduler")
@@ -281,14 +292,20 @@ async def test_update_inventory():
         
         # Test 1: Update Inventory
         print("\n🔍 Testing Update Inventory...")
+        
+        client.register_handler("validation.threshold_warning", update_inventory_handler)
+
         update_response = await client.send_request(
             target_service="validation",
             action="update_inventory",
             data={
                 "ingredients": [
-                    {"espresso": {"type": "regular", "amount": 2}},
-                    {"cup": {"type": "H9", "amount": 1}},
-                    {"milk": {"type": "whole", "amount": 150}},
+                    # {"coffee_beans": {"type": "regular", "amount": 400}},
+                    # {"milk": {"type": "whole_fat", "amount": 150}},
+                    # {"cups": {"type": "H9", "amount": 2}}
+                    {"syrups": {"type": "vanilla", "amount": 150}},
+                    # {"sauces": {"type": "white_chocolate", "amount": 150}},
+                    # {"premixes": {"type": "mocha_frappe", "amount": 150}},
                     # {"espresso": {"type": "decaf", "amount": 1}},
                     # {"espresso": {"type": "regular", "amount": 1}},
                 ]
@@ -296,25 +313,107 @@ async def test_update_inventory():
         )   
         
         print(f"Update Result: {update_response.get('passed')}")
-
-        # update_response2 = await client.send_request(
-        #     target_service="validation",
-        #     action="update_inventory",
-        #     data={
-        #         "ingredients": [
-        #             {"espresso": {"type": "regular", "amount": 2}},
-        #             {"cup": {"type": "H7", "amount": 1}}
-        #         ]
-        #     }
-        # )
-        
-        # print(f"Update Result: {update_response2.get('passed')}")
         
     except Exception as e:
         print(f"❌ Update inventory test failed: {e}")
     
     finally:
         await client.disconnect()
+
+async def test_precheck_inventory():
+    """Test update inventory"""
+    client = RabbitMQClient("scheduler")
+    
+    try:
+        await client.connect()
+        print("✅ precheck Inventory Test Connected")
+        
+        # Test 1: Update Inventory
+        print("\n🔍 Testing precheck Inventory...")
+        precheck_response = await client.send_request(
+            target_service="validation",
+            action="pre_check",
+            data={
+                "items": [
+                    {
+                        "drink_name": "americano",
+                        "size": "large",
+                        "cup_id": "H9",
+                        "temperature": "hot",
+                        "ingredients": {
+                            "coffee_beans": {"type": "regular", "amount": 2}
+                        }
+                    }
+                ]
+            }
+        )   
+        
+        print(f"precheck Result: {precheck_response.get('passed')}")
+        
+    except Exception as e:
+        print(f"❌ precheck inventory test failed: {e}")
+    
+    finally:
+        await client.disconnect()
+
+async def test_alerts():
+    """Test alerts - listen and trigger at same time"""
+    from shared.rabbitmq_client import EventListener
+    
+    client = RabbitMQClient("alert_test")
+    event_listener = EventListener("alert_test")
+    
+    alert_received = False
+    
+    async def alert_handler(data):
+        """Handle threshold warning events"""
+        nonlocal alert_received
+        print(f"🚨 ALERT RECEIVED!")
+        print(f"   Ingredient: {data.get('ingredient')}")
+        print(f"   Severity: {data.get('severity')}")
+        alert_received = True
+    
+    try:
+        # Connect both
+        await client.connect()
+        await event_listener.connect()
+        
+        # Listen for validation alerts
+        await event_listener.subscribe_to_events(["validation.*"])
+        event_listener.register_event_handler("validation.threshold_warning", alert_handler)
+        # event_listener.register_event_handler("validation.threshold_resolved", alert_handler)
+        
+        print("✅ Alert Test Connected - Listening...")
+        
+        # Trigger low inventory
+        print("\n🔍 Making coffee beans very low...")
+        
+        update_response = await client.send_request(
+            target_service="validation",
+            action="inventory_refill",
+            data={
+                "ingredient_type": "coffee_beans",
+                "subtype": "regular"
+            }
+        )
+        
+        print(f"✅ Update sent: {update_response.get('passed')}")
+        
+        # Wait for alert
+        print("⏳ Waiting for alert...")
+        await asyncio.sleep(3)
+        
+        if alert_received:
+            print("✅ SUCCESS: Alert was sent!")
+        else:
+            print("❌ FAIL: No alert received")
+            
+    except Exception as e:
+        print(f"❌ Test failed: {e}")
+    finally:
+        await event_listener.disconnect()
+        await client.disconnect()
+
 def main():
     """Main test runner"""
     print("🧪 Validation Service Test Client")
@@ -327,8 +426,10 @@ def main():
     print("4. Inventory Status Test")
     print("5. Cup Pick Validation Test")
     print("6. Update Inventory Test")
+    print("7. precheck Inventory Test")
+    print("8. Alerts Test")
     
-    choice = input("\nEnter choice (1-6): ").strip()
+    choice = input("\nEnter choice (1-8): ").strip()
     
     if choice == "1":
         asyncio.run(test_validation_service())
@@ -342,6 +443,10 @@ def main():
         asyncio.run(test_cup_pick_validation())
     elif choice == "6":
         asyncio.run(test_update_inventory())
+    elif choice == "7":
+        asyncio.run(test_precheck_inventory())
+    elif choice == "8":
+        asyncio.run(test_alerts())
     else:
         print("Invalid choice, running quick test...")
         asyncio.run(test_single_action())

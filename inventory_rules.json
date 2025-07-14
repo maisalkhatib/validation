@@ -2,7 +2,7 @@
     "coffee_beans": {
         "shot_to_grams": {"1": 9, "2": 18, "3": 27},
         "subtypes": {
-            "regular": {"max_capacity": 5000, "warning_threshold": 500, "critical_threshold": 250},
+            "regular": {"max_capacity": 5000, "warning_threshold": 500, "critical_threshold": 160, "low_threshold": 1600},
             "decaf": {"max_capacity": 3000, "warning_threshold": 300, "critical_threshold": 150}
         }
     },
@@ -19,17 +19,34 @@
     },
     "milk": {
         "subtypes": {
-            "whole": {"max_capacity": 15000, "warning_threshold": 2000, "critical_threshold": 1000},
-            "low": {"max_capacity": 10000, "warning_threshold": 1500, "critical_threshold": 750},
+            "whole_fat": {"max_capacity": 15000, "warning_threshold": 2000, "critical_threshold": 1000},
+            "low_fat": {"max_capacity": 10000, "warning_threshold": 1500, "critical_threshold": 750},
             "lactose_free": {"max_capacity": 8000, "warning_threshold": 1000, "critical_threshold": 500},
-            "soy": {"max_capacity": 8000, "warning_threshold": 1000, "critical_threshold": 500}
+            "almond": {"max_capacity": 8000, "warning_threshold": 1000, "critical_threshold": 500}
         }
     },
-    "syrup": {
+    "syrups": {
         "subtypes": {
             "vanilla": {"max_capacity": 3000, "warning_threshold": 300, "critical_threshold": 150},
             "caramel": {"max_capacity": 3000, "warning_threshold": 300, "critical_threshold": 150},
-            "hazelnut": {"max_capacity": 2000, "warning_threshold": 200, "critical_threshold": 100}
+            "hazelnut": {"max_capacity": 2000, "warning_threshold": 200, "critical_threshold": 100},
+            "peach_iced_tea": {"max_capacity": 2000, "warning_threshold": 200, "critical_threshold": 100},
+            "passion_fruit_puree": {"max_capacity": 2000, "warning_threshold": 200, "critical_threshold": 100},
+            "ice_tea": {"max_capacity": 2000, "warning_threshold": 200, "critical_threshold": 100}
+        }
+    },
+    "sauces": {
+        "subtypes": {
+            "white_chocolate": {"max_capacity": 3000, "warning_threshold": 300, "critical_threshold": 150},
+            "caramel": {"max_capacity": 3000, "warning_threshold": 300, "critical_threshold": 150},
+            "condense_milk": {"max_capacity": 2000, "warning_threshold": 200, "critical_threshold": 100}
+        }
+    },
+    "premixes": {
+        "subtypes": {
+            "mocha_frappe": {"max_capacity": 3000, "warning_threshold": 300, "critical_threshold": 150},
+            "chocolate_frappe": {"max_capacity": 3000, "warning_threshold": 300, "critical_threshold": 150},
+            "half_and_half": {"max_capacity": 2000, "warning_threshold": 200, "critical_threshold": 100}
         }
     }
 }

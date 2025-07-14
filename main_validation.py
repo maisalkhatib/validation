@@ -1,3 +1,5 @@
+import asyncio
+import datetime
 from typing import Literal, Optional
 from pydantic import BaseModel, ValidationError
 from fastapi import HTTPException
@@ -5,6 +7,7 @@ import logging
 import threading
 from queue import Queue
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 from inventory_manager import InventoryManager
 from pydantic_req_structure import InventoryStatusRequest, ClientType
@@ -34,8 +37,15 @@ class MainValidation:
         self._request_event = threading.Event()
         self._response_event = threading.Event()
 
+        # Thread pool for blocking operations
+        self._thread_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="detection_worker")
+        # Detection task control
+        self._detection_task = None
+        self._detection_running = False
+
         # initialize the logging
         logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
 
     def post_request(self, request):
@@ -248,7 +258,7 @@ class MainValidation:
                             amount = details["amount"]
                             if ingredient_type == "coffee_beans":
                                 # get the amount against the shot using the self._inventory_client.convert_shots_to_grams(amount)
-                                amount = self._inventory_client.convert_shots_to_grams(item["ingredients"]["espresso"]["amount"])
+                                amount = self._inventory_client.convert_shots_to_grams(item["ingredients"]["coffee_beans"]["amount"])
                             
                             if subtype in current_inventory_cache[ingredient_type]:
                                 current_amount = current_inventory_cache[ingredient_type][subtype]["current_amount"]
@@ -350,19 +360,42 @@ class MainValidation:
             # Extract parameters from payload
             ingredient_type = payload.get("payload", {}).get("ingredient_type", None)
             subtype = payload.get("payload", {}).get("subtype", None)
+            print(f"inside process_refill_ingredient_request: ingredient_type: {ingredient_type}, subtype: {subtype}")
 
             result = {"passed": True, "details": {}}
             result["request_id"] = payload["request_id"]
             result["client_type"] = payload["client_type"]
 
-            is_refilled = self._inventory_client.refill_inventory(
+            # check if the ingredient is coffee beans regular
+            if (ingredient_type == "coffee_beans" and subtype == "regular") or (ingredient_type == "coffee_beans" and subtype == None) or (ingredient_type ==None and subtype == None):
+                # refill the inventory
+                detection_result = self._run_coffee_beans_detection(function_name="inventory_refill")
+                if detection_result["success"] and detection_result.get("updated"):
+                    result["passed"] = True
+                    result["details"]["message"] = f"Coffee beans regular refilled successfully with {detection_result['percentage']}% detected"
+                    result["details"]["percentage"] = detection_result["percentage"]
+                elif detection_result["success"] and not detection_result.get("updated"):
+                    # Detection successful but percentage <= 0
+                    result["passed"] = False
+                    result["details"]["error"] = detection_result["message"]
+                    result["details"]["alert_type"] = detection_result.get("alert_type", "visibility_issue")
+                else:
+                    # Detection failed - camera issue
+                    result["passed"] = False
+                    result["details"]["error"] = detection_result["message"]
+                    result["details"]["alert_type"] = detection_result.get("alert_type", "camera_reconnect")
+
+            else:
+                # refill the inventory
+                is_refilled = self._inventory_client.refill_inventory(
                 ingredient_type=ingredient_type,
                 subtype=subtype)
             
             if not is_refilled:
                 result["passed"] = False
                 result["details"]["error"] = "Failed to refill inventory"
-
+            
+            self.logger.info(f"Refill ingredient request result: {json.dumps(result, indent=2)}")
             self._response_queue.put(result)
             self._response_event.set()
             return result
@@ -422,6 +455,32 @@ class MainValidation:
             self._response_event.set()
             return error_result
     
+    def process_category_info_request(self, payload):
+        """Process category info request"""
+        try:
+            category_info = self._inventory_client.get_inventory_category_info()
+            final_result = {
+                "passed": True,
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "details": category_info
+            }
+            # self._response_queue.put(final_result)
+            # self._response_event.set()
+            return final_result
+        
+        except Exception as e:
+            logging.error(f"Error processing category info request: {e}")
+            error_result = {
+                "passed": False,
+                "request_id": payload["request_id"],
+                "client_type": payload["client_type"],
+                "details": {"error": f"Error processing request: {str(e)}"}
+            }
+            self._response_queue.put(error_result)
+            self._response_event.set()
+            return error_result
+        
 
     def process_category_summary_request(self, payload):
         """Process category summary request"""
@@ -513,15 +572,6 @@ class MainValidation:
             return error_result
         
 
-    def process_coffee_beans_detection_request(self):
-        try:
-            result = self._coffee_beans_detector.detect_coffee_beans()
-            # self._response_queue.put(result)
-            # self._response_event.set()
-            return result
-        except Exception as e:
-            logging.error(f"Error processing coffee beans detection request: {e}")
-
             
     
     def request_worker(self):
@@ -555,3 +605,142 @@ class MainValidation:
             except Exception as e:
                 logging.error(f"Error processing response: {e}")
 
+
+    async def start_periodic_detection(self):
+        """Start the periodic coffee beans detection task"""
+        if self._detection_task is None or self._detection_task.done():
+            self._detection_running = True
+            self._detection_task = asyncio.create_task(self._periodic_detection_loop())
+            self.logger.info("Started periodic coffee beans detection (every 10 minutes)")
+
+    async def stop_periodic_detection(self):
+        """Stop the periodic coffee beans detection task"""
+        self._detection_running = False
+        if self._detection_task and not self._detection_task.done():
+            self._detection_task.cancel()
+            try:
+                await self._detection_task
+            except asyncio.CancelledError:
+                pass
+        self.logger.info("Stopped periodic coffee beans detection")
+
+    async def _periodic_detection_loop(self):
+        """Main loop for periodic coffee beans detection"""
+        while self._detection_running:
+            try:
+                self.logger.info("Starting coffee beans detection...")
+                
+                # Run the blocking detection in thread pool
+                loop = asyncio.get_event_loop()
+                detection_result = await loop.run_in_executor(
+                    self._thread_pool, 
+                    self._run_coffee_beans_detection
+                )
+                
+                # Log the result
+                if detection_result.get("updated"):
+                    self.logger.info(f"Periodic detection updated inventory: {detection_result['percentage']}%")
+                else:
+                    self.logger.info(f"Periodic detection completed without update: {detection_result['message']}")
+                
+            except asyncio.CancelledError:
+                self.logger.info("Coffee beans detection task cancelled")
+                break
+            except Exception as e:
+                self.logger.error(f"Error in coffee beans detection: {e}")
+            
+            # Wait for 10 minutes before next detection
+            try:
+                await asyncio.sleep(600)  # 10 minutes = 600 seconds
+            except asyncio.CancelledError:
+                break
+
+    def _run_coffee_beans_detection(self, function_name: str = "periodic_detection"):
+        """Wrapper method to run detection in thread pool (this runs in a separate thread)"""
+        try:
+            # This is the blocking operation that runs in the thread pool
+            cv_result = self._coffee_beans_detector.detect_coffee_beans()
+            print(f"cv_result: {cv_result}")
+            # if function_name == "periodic_detection":
+            #     # Case 1: Periodic detection every 10 minutes
+            #     if cv_result.get("percentage", -1) > 0:
+            #         # Update inventory based on detected percentage
+            #         success = self._inventory_client.update_inventory_from_detection(cv_result["percentage"])
+            #         return {
+            #             "success": True,
+            #             "updated": True,
+            #             "percentage": cv_result["percentage"],
+            #             "timestamp": datetime.datetime.now().isoformat(),
+            #             "message": f"Periodic detection successful, inventory updated with {cv_result['percentage']}% detected"
+            #         }
+            #     else:
+            #         # Percentage <= 0, don't update inventory
+            #         return {
+            #             "success": True,
+            #             "updated": False,
+            #             "percentage": cv_result.get("percentage", 0),
+            #             "timestamp": datetime.datetime.now().isoformat(),
+            #             "message": "Periodic detection completed, no inventory update (percentage <= 0)"
+            #         }
+                    
+            if function_name == "inventory_refill":
+                # Case 4: Refill operation
+                if cv_result.get("percentage", -1) > 0:
+                    # Update inventory based on detected percentage
+                    success = self._inventory_client.update_inventory_from_detection(cv_result["percentage"])
+                    return {
+                        "success": True,
+                        "updated": True,
+                        "percentage": cv_result["percentage"],
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "message": f"Refill detection successful, inventory updated with {cv_result['percentage']}% detected"
+                    }
+                else:
+                    # Percentage <= 0, send alert about visibility issue
+                    return {
+                        "success": True,
+                        "updated": False,
+                        "percentage": cv_result.get("percentage", 0),
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "message": "Refill detection failed - coffee beans should be above the unseen area",
+                        "alert_type": "visibility_issue"
+                    }
+            else:
+                # Default case - just return detection result
+                return {
+                    "success": True,
+                    "result": cv_result,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "message": "Coffee beans detection completed successfully"
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Coffee beans detection failed: {e}")
+            
+            if function_name == "inventory_refill":
+                # Case 4: Detection failed during refill - alert to reconnect camera
+                return {
+                    "success": False,
+                    "updated": False,
+                    "error": str(e),
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "message": "Detection failed during refill operation",
+                    "alert_type": "camera_reconnect"
+                }
+            else:
+                # Case 1: Detection failed during periodic - keep current amount
+                return {
+                    "success": False,
+                    "updated": False,
+                    "error": str(e),
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "message": "Detection failed, keeping current inventory amount"
+                }
+
+    async def cleanup(self):
+        """Cleanup resources when shutting down"""
+        await self.stop_periodic_detection()
+        
+        # Shutdown the thread pool
+        self._thread_pool.shutdown(wait=True)
+        self.logger.info("MainValidation cleanup completed")

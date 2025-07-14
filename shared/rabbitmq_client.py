@@ -9,6 +9,9 @@ from aio_pika import Message, DeliveryMode, ExchangeType
 from aio_pika.abc import AbstractIncomingMessage
 import os
 
+import sys
+sys.tracebacklimit = 0
+
 # logger = logging.getLogger(__name__)
 
 class RabbitMQClient:
